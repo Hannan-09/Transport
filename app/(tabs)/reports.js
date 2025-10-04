@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { useEffect, useState } from "react";
@@ -15,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { partiesAPI, transactionsAPI } from "../../lib/supabase";
+import { expensesAPI, partiesAPI, transactionsAPI } from "../../lib/supabase";
 
 export default function Reports() {
   const [parties, setParties] = useState([]);
@@ -23,6 +22,13 @@ export default function Reports() {
   const [partyModalVisible, setPartyModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectionMode, setSelectionMode] = useState("single");
+
+  // Monthly Report States
+  const [monthlyReportVisible, setMonthlyReportVisible] = useState(false);
+  const [monthlyData, setMonthlyData] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(
+    new Date().toISOString().slice(0, 7)
+  ); // YYYY-MM format
 
   useEffect(() => {
     loadParties();
@@ -59,7 +65,7 @@ export default function Reports() {
     }
   };
 
-  const generatePartyReport = (party, transactions) => {
+  const generatePartyReport = (party, transactions, options = {}) => {
     const totalJama = transactions
       .filter((t) => t.type === "Jama")
       .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
@@ -93,21 +99,39 @@ export default function Reports() {
         </head>
         <body>
           <div class="header">
-            <h1>Transport Ledger Report</h1>
+            <h1>Trips Ledger Report</h1>
             <h2>${party.name}</h2>
             <p class="date">Generated on: ${new Date().toLocaleDateString()}</p>
           </div>
+          
+          ${
+            options.includeSummaryMessage
+              ? `
+          <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196f3;">
+            <h3 style="margin-top: 0; color: #1976d2;">📱 Trips Message</h3>
+            <p style="margin-bottom: 0; font-style: italic;">
+              Hi ${party.name}, here is your trips ledger report:<br><br>
+              📊 <strong>Trips Ledger Summary</strong><br>
+              Party: ${party.name}<br>
+              Date: ${new Date().toLocaleDateString()}<br><br>
+              💰 <strong>Financial Summary:</strong><br>
+              Total Amount: ₹${transactions
+                .filter((t) => t.type === "Udhar")
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0)
+                .toFixed(2)}<br><br>
+              📋 Total Trip: ${transactions.length}<br><br>
+              Thank you for your business!
+            </p>
+          </div>
+          `
+              : ""
+          }
           
           <div class="party-info">
             <p><strong>Party Name:</strong> ${party.name}</p>
             ${
               party.phone_number
                 ? `<p><strong>Phone:</strong> ${party.phone_number}</p>`
-                : ""
-            }
-            ${
-              party.address
-                ? `<p><strong>Address:</strong> ${party.address}</p>`
                 : ""
             }
           </div>
@@ -121,12 +145,6 @@ export default function Reports() {
               <div class="summary-value udhar">₹${totalUdhar.toFixed(2)}</div>
               <div>Total Udhar</div>
             </div>
-            <div class="summary-item">
-              <div class="summary-value ${
-                balance >= 0 ? "jama" : "udhar"
-              }">₹${Math.abs(balance).toFixed(2)}</div>
-              <div>Net ${balance >= 0 ? "Jama" : "Udhar"}</div>
-            </div>
           </div>
 
           <table>
@@ -136,6 +154,7 @@ export default function Reports() {
                 <th>Type</th>
                 <th>Amount</th>
                 <th>Rounds</th>
+                <th>Description</th>
               </tr>
             </thead>
             <tbody>
@@ -149,6 +168,7 @@ export default function Reports() {
                     parseFloat(transaction.amount)
                   ).toFixed(2)}</td>
                   <td>${transaction.rounds}</td>
+                  <td>${transaction.description || "-"}</td>
                 </tr>
               `
                 )
@@ -186,8 +206,10 @@ export default function Reports() {
         // Get transactions for this party
         const transactions = await transactionsAPI.getByParty(party.id);
 
-        // Generate report data with HTML content
-        const reportData = generatePartyReport(party, transactions);
+        // Generate report data with HTML content (include WhatsApp message in PDF)
+        const reportData = generatePartyReport(party, transactions, {
+          includeSummaryMessage: true,
+        });
 
         // Generate PDF
         const { uri } = await Print.printToFileAsync({
@@ -213,9 +235,7 @@ export default function Reports() {
 
       Alert.alert(
         "Success",
-        `PDF${
-          selectedParties.size > 1 ? "s" : ""
-        } generated! Select WhatsApp to send with message.`
+        `PDF${selectedParties.size > 1 ? "s" : ""} generated successfully.`
       );
 
       setPartyModalVisible(false);
@@ -232,43 +252,280 @@ export default function Reports() {
     try {
       const phoneNumber = party.phone_number.replace(/[^0-9]/g, "");
 
-      // Simplified message as requested
-      const message = `Hi ${party.name}, here is your transport ledger report:
-
-📊 *Transport Ledger Summary*
-Party: ${party.name}
-Date: ${new Date().toLocaleDateString()}
-
-💰 *Financial Summary:*
-Total Amount: ₹${reportData.totalUdhar.toFixed(2)}
-
-📋 Total Transactions: ${reportData.transactions.length}
-
-Thank you for your business!`;
-
-      // Single action: Share PDF with message directly to WhatsApp contact
-      // Share PDF with message as caption - single action
-      // Copy message to clipboard for easy pasting as caption
-      await Clipboard.setStringAsync(message);
-
-      // Share PDF and show helpful message
+      // Simple manual PDF sharing - message is embedded in PDF
       await Sharing.shareAsync(fileUri, {
         mimeType: "application/pdf",
-        dialogTitle: `Send to ${party.name}`,
         UTI: "com.adobe.pdf",
+        dialogTitle: "Share via WhatsApp",
       });
 
-      // Show helpful alert about clipboard
-      // Alert.alert(
-      //   "Message Copied!",
-      //   "The message has been copied to your clipboard. After selecting WhatsApp, you can paste it as a caption for the PDF.",
-      //   [{ text: "OK" }]
-      // );
-
-      // No need for separate WhatsApp message - everything is in the PDF share
+      // No alert needed - user will see the share picker
     } catch (error) {
       console.error("Error sharing to WhatsApp:", error);
       Alert.alert("Error", "Failed to share to WhatsApp");
+    }
+  };
+
+  // Monthly Report Functions
+  const generateMonthlyReport = async () => {
+    try {
+      setLoading(true);
+
+      // Get all parties
+      const allParties = await partiesAPI.getAll();
+
+      // Get all transactions for the selected month
+      let allTransactions = [];
+      for (const party of allParties) {
+        const partyTransactions = await transactionsAPI.getByParty(party.id);
+        const monthTransactions = partyTransactions.filter((transaction) =>
+          transaction.date.startsWith(selectedMonth)
+        );
+
+        // Add party info to each transaction
+        const transactionsWithParty = monthTransactions.map((transaction) => ({
+          ...transaction,
+          partyName: party.name,
+          partyPhone: party.phone_number,
+        }));
+
+        allTransactions = [...allTransactions, ...transactionsWithParty];
+      }
+
+      // Get all expenses for the selected month
+      const allExpenses = await expensesAPI.getAll();
+      const monthExpenses = allExpenses.filter((expense) =>
+        expense.date.startsWith(selectedMonth)
+      );
+
+      // Calculate totals
+      const totalJama = allTransactions
+        .filter((t) => t.type === "Jama")
+        .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+
+      const totalUdhar = allTransactions
+        .filter((t) => t.type === "Udhar")
+        .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+
+      const totalExpenses = monthExpenses.reduce(
+        (sum, e) => sum + Math.abs(parseFloat(e.amount)),
+        0
+      );
+
+      // Group transactions by party
+      const transactionsByParty = {};
+      allTransactions.forEach((transaction) => {
+        if (!transactionsByParty[transaction.partyName]) {
+          transactionsByParty[transaction.partyName] = [];
+        }
+        transactionsByParty[transaction.partyName].push(transaction);
+      });
+
+      // Group expenses by category
+      const expensesByCategory = {};
+      monthExpenses.forEach((expense) => {
+        if (!expensesByCategory[expense.category]) {
+          expensesByCategory[expense.category] = [];
+        }
+        expensesByCategory[expense.category].push(expense);
+      });
+
+      const monthlyReportData = {
+        month: selectedMonth,
+        totalJama,
+        totalUdhar,
+        totalExpenses,
+        netBalance: totalJama - totalUdhar - totalExpenses,
+        allTransactions,
+        monthExpenses,
+        transactionsByParty,
+        expensesByCategory,
+        partiesCount: Object.keys(transactionsByParty).length,
+        transactionsCount: allTransactions.length,
+        expensesCount: monthExpenses.length,
+      };
+
+      setMonthlyData(monthlyReportData);
+      setMonthlyReportVisible(true);
+    } catch (error) {
+      console.error("Error generating monthly report:", error);
+      Alert.alert("Error", "Failed to generate monthly report");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateMonthlyPDF = async () => {
+    if (!monthlyData) return;
+
+    try {
+      const monthName = new Date(selectedMonth + "-01").toLocaleDateString(
+        "en-US",
+        {
+          year: "numeric",
+          month: "long",
+        }
+      );
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Monthly Report - ${monthName}</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 20px; }
+              .header { text-align: center; margin-bottom: 30px; }
+              .summary { display: flex; justify-content: space-around; margin-bottom: 30px; background: #f8f9fa; padding: 20px; border-radius: 8px; }
+              .summary-item { text-align: center; }
+              .summary-value { font-size: 18px; font-weight: bold; }
+              .jama { color: #059669; }
+              .udhar { color: #dc2626; }
+              .expense { color: #f59e0b; }
+              .net { color: #6366f1; }
+              .section { margin-bottom: 30px; }
+              .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #111827; }
+              table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              th { background-color: #f2f2f2; }
+              .party-section { margin-bottom: 25px; }
+              .party-title { font-size: 16px; font-weight: bold; color: #374151; margin-bottom: 10px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>Monthly Transport Report</h1>
+              <h2>${monthName}</h2>
+              <p>Generated on: ${new Date().toLocaleDateString()}</p>
+            </div>
+            
+            <div class="summary">
+              <div class="summary-item">
+                <div class="summary-value jama">₹${monthlyData.totalJama.toFixed(
+                  2
+                )}</div>
+                <div>Total Jama</div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-value udhar">₹${monthlyData.totalUdhar.toFixed(
+                  2
+                )}</div>
+                <div>Total Udhar</div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-value expense">₹${monthlyData.totalExpenses.toFixed(
+                  2
+                )}</div>
+                <div>Total Expenses</div>
+              </div>
+
+            </div>
+            
+            <div class="section">
+              <div class="section-title">📊 Overview</div>
+              <p><strong>Parties:</strong> ${monthlyData.partiesCount}</p>
+              <p><strong>Transactions:</strong> ${
+                monthlyData.transactionsCount
+              }</p>
+              <p><strong>Expenses:</strong> ${monthlyData.expensesCount}</p>
+            </div>
+            
+            <div class="section">
+              <div class="section-title">🚛 Transactions by Party</div>
+              ${Object.entries(monthlyData.transactionsByParty)
+                .map(
+                  ([partyName, transactions]) => `
+                <div class="party-section">
+                  <div class="party-title">${partyName}</div>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Rounds</th>
+                        <th>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${transactions
+                        .map(
+                          (transaction) => `
+                        <tr>
+                          <td>${transaction.date}</td>
+                          <td>${transaction.type}</td>
+                          <td class="${transaction.type.toLowerCase()}">₹${Math.abs(
+                            parseFloat(transaction.amount)
+                          ).toFixed(2)}</td>
+                          <td>${transaction.rounds}</td>
+                          <td>${transaction.description || "-"}</td>
+                        </tr>
+                      `
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>
+                </div>
+              `
+                )
+                .join("")}
+            </div>
+            
+            <div class="section">
+              <div class="section-title">💰 Expenses by Category</div>
+              ${Object.entries(monthlyData.expensesByCategory)
+                .map(
+                  ([category, expenses]) => `
+                <div class="party-section">
+                  <div class="party-title">${category}</div>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Amount</th>
+                        <th>Payment Method</th>
+                        <th>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${expenses
+                        .map(
+                          (expense) => `
+                        <tr>
+                          <td>${expense.date}</td>
+                          <td class="expense">₹${Math.abs(
+                            parseFloat(expense.amount)
+                          ).toFixed(2)}</td>
+                          <td>${expense.payment_method}</td>
+                          <td>${expense.description || "-"}</td>
+                        </tr>
+                      `
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>
+                </div>
+              `
+                )
+                .join("")}
+            </div>
+          </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({
+        html: htmlContent,
+        base64: false,
+      });
+
+      await Sharing.shareAsync(uri, {
+        mimeType: "application/pdf",
+        UTI: "com.adobe.pdf",
+        dialogTitle: `Monthly Report - ${monthName}`,
+      });
+    } catch (error) {
+      console.error("Error generating monthly PDF:", error);
+      Alert.alert("Error", "Failed to generate PDF");
     }
   };
 
@@ -302,14 +559,18 @@ Thank you for your business!`;
       </View>
 
       <View style={styles.content}>
-        <TouchableOpacity style={styles.reportOption}>
+        <TouchableOpacity
+          style={styles.reportOption}
+          onPress={generateMonthlyReport}
+        >
           <View style={styles.reportIconContainer}>
             <Ionicons name="document-text-outline" size={24} color="#6366f1" />
           </View>
           <View style={styles.reportInfo}>
             <Text style={styles.reportTitle}>Monthly Report</Text>
             <Text style={styles.reportDescription}>
-              Generate a summary of monthly transactions.
+              Generate comprehensive monthly summary with all transactions and
+              expenses.
             </Text>
           </View>
         </TouchableOpacity>
@@ -358,7 +619,7 @@ Thank you for your business!`;
               </TouchableOpacity>
             </View>
 
-            <View style={styles.selectionModeContainer}>
+            {/* <View style={styles.selectionModeContainer}>
               <TouchableOpacity
                 style={[
                   styles.modeButton,
@@ -399,9 +660,9 @@ Thank you for your business!`;
                   Multiple Parties
                 </Text>
               </TouchableOpacity>
-            </View>
+            </View> */}
 
-            {selectionMode === "multiple" && (
+            {/* {selectionMode === "multiple" && (
               <View style={styles.selectAllContainer}>
                 <TouchableOpacity
                   style={styles.selectAllButton}
@@ -417,7 +678,7 @@ Thank you for your business!`;
                   {selectedParties.size} selected
                 </Text>
               </View>
-            )}
+            )} */}
 
             <ScrollView style={styles.partiesList}>
               <FlatList
@@ -457,6 +718,190 @@ Thank you for your business!`;
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Monthly Report Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={monthlyReportVisible}
+        onRequestClose={() => setMonthlyReportVisible(false)}
+        presentationStyle="overFullScreen"
+        statusBarTranslucent={true}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.monthlyModalContent]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                Monthly Report -{" "}
+                {new Date(selectedMonth + "-01").toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                })}
+              </Text>
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  style={styles.pdfButton}
+                  onPress={generateMonthlyPDF}
+                >
+                  <Ionicons
+                    name="document-text-outline"
+                    size={20}
+                    color="#6366f1"
+                  />
+                  <Text style={styles.pdfButtonText}>Export PDF</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setMonthlyReportVisible(false)}
+                >
+                  <Ionicons name="close" size={24} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {monthlyData && (
+              <ScrollView
+                style={styles.monthlyContent}
+                contentContainerStyle={styles.monthlyContentContainer}
+                showsVerticalScrollIndicator={true}
+                bounces={true}
+              >
+                {/* Summary Cards */}
+                <View style={styles.summarySection}>
+                  <View style={styles.summaryGrid}>
+                    <View style={[styles.summaryCard, styles.jamaCard]}>
+                      <Text style={styles.summaryLabel}>Total Jama</Text>
+                      <Text style={[styles.summaryValue, styles.jamaText]}>
+                        ₹{monthlyData.totalJama.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={[styles.summaryCard, styles.expenseCard]}>
+                      <Text style={styles.summaryLabel}>Total Expenses</Text>
+                      <Text style={[styles.summaryValue, styles.expenseText]}>
+                        ₹{monthlyData.totalExpenses.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={[styles.summaryCard, styles.udharCard]}>
+                      <Text style={styles.summaryLabel}>Total Udhar</Text>
+                      <Text style={[styles.summaryValue, styles.udharText]}>
+                        ₹{monthlyData.totalUdhar.toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Overview Stats */}
+                <View style={styles.overviewSection}>
+                  <Text style={styles.sectionTitle}>📊 Overview</Text>
+                  <View style={styles.statsRow}>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>
+                        {monthlyData.partiesCount}
+                      </Text>
+                      <Text style={styles.statLabel}>Parties</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>
+                        {monthlyData.transactionsCount}
+                      </Text>
+                      <Text style={styles.statLabel}>Transactions</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>
+                        {monthlyData.expensesCount}
+                      </Text>
+                      <Text style={styles.statLabel}>Expenses</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Transactions by Party */}
+                <View style={styles.transactionsSection}>
+                  <Text style={styles.sectionTitle}>
+                    🚛 Transactions by Party
+                  </Text>
+                  {Object.entries(monthlyData.transactionsByParty).map(
+                    ([partyName, transactions]) => (
+                      <View key={partyName} style={styles.partySection}>
+                        <Text style={styles.partyTitle}>{partyName}</Text>
+                        {transactions.map((transaction, index) => (
+                          <View key={index} style={styles.transactionItem}>
+                            <View style={styles.transactionLeft}>
+                              <Text style={styles.transactionDate}>
+                                {transaction.date}
+                              </Text>
+                              <Text style={styles.transactionType}>
+                                {transaction.type}
+                              </Text>
+                              <Text style={styles.transactionRounds}>
+                                Rounds: {transaction.rounds}
+                              </Text>
+                              {transaction.description && (
+                                <Text style={styles.transactionDesc}>
+                                  {transaction.description}
+                                </Text>
+                              )}
+                            </View>
+                            <Text
+                              style={[
+                                styles.transactionAmount,
+                                transaction.type === "Jama"
+                                  ? styles.jamaText
+                                  : styles.udharText,
+                              ]}
+                            >
+                              ₹
+                              {Math.abs(parseFloat(transaction.amount)).toFixed(
+                                2
+                              )}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )
+                  )}
+                </View>
+
+                {/* Expenses by Category */}
+                <View style={styles.expensesSection}>
+                  <Text style={styles.sectionTitle}>
+                    💰 Expenses by Category
+                  </Text>
+                  {Object.entries(monthlyData.expensesByCategory).map(
+                    ([category, expenses]) => (
+                      <View key={category} style={styles.categorySection}>
+                        <Text style={styles.categoryTitle}>{category}</Text>
+                        {expenses.map((expense, index) => (
+                          <View key={index} style={styles.expenseItem}>
+                            <View style={styles.expenseLeft}>
+                              <Text style={styles.expenseDate}>
+                                {expense.date}
+                              </Text>
+                              <Text style={styles.expenseMethod}>
+                                {expense.payment_method}
+                              </Text>
+                              {expense.description && (
+                                <Text style={styles.expenseDesc}>
+                                  {expense.description}
+                                </Text>
+                              )}
+                            </View>
+                            <Text
+                              style={[styles.expenseAmount, styles.expenseText]}
+                            >
+                              ₹{Math.abs(parseFloat(expense.amount)).toFixed(2)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )
+                  )}
+                </View>
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -561,6 +1006,7 @@ const styles = StyleSheet.create({
     padding: 0,
     width: "100%",
     maxWidth: 400,
+    minHeight: "fit-content",
     maxHeight: "80%",
     shadowColor: "#000",
     shadowOffset: {
@@ -636,8 +1082,9 @@ const styles = StyleSheet.create({
     color: "#6b7280",
   },
   partiesList: {
-    maxHeight: 300,
+    maxHeight: 500,
     paddingHorizontal: 20,
+    paddingTop: 20,
   },
   partyItem: {
     flexDirection: "row",
@@ -722,5 +1169,236 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     color: "white",
+  },
+  // Monthly Report Styles
+  monthlyModalContent: {
+    backgroundColor: "white",
+    borderRadius: 20,
+    margin: 20,
+    marginTop: 60,
+    flex: 1,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  pdfButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f0f9ff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginRight: 12,
+  },
+  pdfButtonText: {
+    fontSize: 12,
+    color: "#6366f1",
+    fontWeight: "600",
+    marginLeft: 4,
+  },
+  monthlyContent: {
+    flex: 1,
+  },
+  monthlyContentContainer: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  summarySection: {
+    marginBottom: 24,
+  },
+  summaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  summaryCard: {
+    width: "48%",
+    backgroundColor: "white",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  jamaCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#059669",
+  },
+  udharCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#dc2626",
+    width: "100%",
+  },
+  expenseCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#f59e0b",
+  },
+
+  summaryLabel: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginBottom: 4,
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  jamaText: {
+    color: "#059669",
+  },
+  udharText: {
+    color: "#dc2626",
+  },
+  expenseText: {
+    color: "#f59e0b",
+  },
+
+  overviewSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#111827",
+    marginBottom: 16,
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    backgroundColor: "white",
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  statItem: {
+    alignItems: "center",
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#6366f1",
+  },
+  statLabel: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 4,
+  },
+  transactionsSection: {
+    marginBottom: 24,
+  },
+  partySection: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  partyTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  transactionItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  transactionLeft: {
+    flex: 1,
+  },
+  transactionDate: {
+    fontSize: 14,
+    color: "#111827",
+    fontWeight: "500",
+  },
+  transactionType: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  transactionRounds: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  transactionDesc: {
+    fontSize: 12,
+    color: "#6b7280",
+    fontStyle: "italic",
+  },
+  transactionAmount: {
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  expensesSection: {
+    marginBottom: 24,
+  },
+  categorySection: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  categoryTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  expenseItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  expenseLeft: {
+    flex: 1,
+  },
+  expenseDate: {
+    fontSize: 14,
+    color: "#111827",
+    fontWeight: "500",
+  },
+  expenseMethod: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  expenseDesc: {
+    fontSize: 12,
+    color: "#6b7280",
+    fontStyle: "italic",
+  },
+  expenseAmount: {
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });

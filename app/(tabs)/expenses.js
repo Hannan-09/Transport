@@ -2,8 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import {
   Alert,
-  FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -15,7 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { expensesAPI } from "../../lib/supabase";
-``;
+// ``;
 
 const expenseCategories = ["Vehicle Repair", "Fuel", "Other Expenses"];
 
@@ -295,6 +296,7 @@ export default function Expenses() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
+      {/* Header Section */}
       <View style={styles.header}>
         {selectionMode ? (
           <View style={styles.selectionHeader}>
@@ -304,23 +306,19 @@ export default function Expenses() {
             >
               <Ionicons name="close" size={24} color="#6b7280" />
             </TouchableOpacity>
-
             <Text style={styles.selectionTitle}>
               {selectedExpenses.size} selected
             </Text>
-
-            <View style={styles.selectionActions}>
-              <TouchableOpacity
-                style={styles.selectAllButton}
-                onPress={selectAllExpenses}
-              >
-                <Text style={styles.selectAllText}>
-                  {selectedExpenses.size === expenses.length
-                    ? "Deselect All"
-                    : "Select All"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.selectAllButton}
+              onPress={selectAllExpenses}
+            >
+              <Text style={styles.selectAllText}>
+                {selectedExpenses.size === expenses.length
+                  ? "Deselect All"
+                  : "Select All"}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.normalHeader}>
@@ -339,12 +337,13 @@ export default function Expenses() {
         )}
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoryScrollContainer}
-      >
-        <View style={styles.categoryContainer}>
+      {/* Category Buttons */}
+      <View style={styles.categorySection}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryScrollContainer}
+        >
           {expenseCategories.map((category) => (
             <TouchableOpacity
               key={category}
@@ -365,31 +364,43 @@ export default function Expenses() {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </View>
 
-      <FlatList
-        data={expenses}
-        renderItem={renderExpenseItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
+      {/* Expense List */}
+      <View style={styles.mainContent}>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Loading expenses...</Text>
+          </View>
+        ) : expenses.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="receipt-outline" size={48} color="#9ca3af" />
-            <Text style={styles.emptyText}>
-              {loading ? "Loading expenses..." : `No expenses found`}
-            </Text>
+            <Text style={styles.emptyText}>No expenses found</Text>
             <Text style={styles.emptySubtext}>
               Tap the + button to add your first expense
             </Text>
           </View>
-        }
-      />
+        ) : (
+          <ScrollView
+            style={styles.scrollContainer}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.expenseList}>
+              {expenses.map((item, index) => (
+                <View key={item.id || index} style={styles.expenseItemWrapper}>
+                  {renderExpenseItem({ item })}
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        )}
+      </View>
 
+      {/* Floating Action Buttons */}
       {selectionMode && selectedExpenses.size > 0 && (
         <TouchableOpacity
           style={styles.deleteSelectedButton}
@@ -420,148 +431,163 @@ export default function Expenses() {
         presentationStyle="overFullScreen"
         statusBarTranslucent={true}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoidingView}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <TouchableOpacity
-            style={styles.modalContent}
+            style={styles.modalOverlay}
             activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
+            onPress={() => setModalVisible(false)}
           >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                Add {selectedCategory} Expense
-              </Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setModalVisible(false)}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.formContainer}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Date</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={date}
-                  onChangeText={setDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Amount *</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={amount}
-                  onChangeText={setAmount}
-                  placeholder="Enter amount (without ₹ sign)"
-                  placeholderTextColor="#9ca3af"
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Type *</Text>
-                <View style={styles.typeContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.typeButton,
-                      type === "Jama" && styles.selectedTypeButton,
-                    ]}
-                    onPress={() => setType("Jama")}
-                  >
-                    <Text
-                      style={[
-                        styles.typeButtonText,
-                        type === "Jama" && styles.selectedTypeButtonText,
-                      ]}
-                    >
-                      Jama (+)
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.typeButton,
-                      type === "Udhar" && styles.selectedTypeButton,
-                    ]}
-                    onPress={() => setType("Udhar")}
-                  >
-                    <Text
-                      style={[
-                        styles.typeButtonText,
-                        type === "Udhar" && styles.selectedTypeButtonText,
-                      ]}
-                    >
-                      Udhar (-)
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Payment Method</Text>
-                <View style={styles.paymentContainer}>
-                  {["Cash", "Online"].map((method) => (
-                    <TouchableOpacity
-                      key={method}
-                      style={[
-                        styles.paymentButton,
-                        paymentMethod === method &&
-                          styles.selectedPaymentButton,
-                      ]}
-                      onPress={() => setPaymentMethod(method)}
-                    >
-                      <Text
-                        style={[
-                          styles.paymentButtonText,
-                          paymentMethod === method &&
-                            styles.selectedPaymentButtonText,
-                        ]}
-                      >
-                        {method}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Description (Optional)</Text>
-                <TextInput
-                  style={[styles.textInput, styles.textArea]}
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="Enter description"
-                  placeholderTextColor="#9ca3af"
-                  multiline={true}
-                  numberOfLines={3}
-                />
-              </View>
-
-              <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={styles.modalContent}
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  Add {selectedCategory} Expense
+                </Text>
                 <TouchableOpacity
-                  style={styles.cancelButton}
+                  style={styles.closeButton}
                   onPress={() => setModalVisible(false)}
                 >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.saveButton}
-                  onPress={handleAddExpense}
-                >
-                  <Text style={styles.saveButtonText}>Add Expense</Text>
+                  <Ionicons name="close" size={24} color="#6b7280" />
                 </TouchableOpacity>
               </View>
-            </View>
+
+              <ScrollView
+                style={styles.scrollContainer}
+                contentContainerStyle={styles.scrollContentContainer}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+                bounces={true}
+              >
+                <View style={styles.formContainer}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Date</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={date}
+                      onChangeText={setDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor="#9ca3af"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Amount *</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={amount}
+                      onChangeText={setAmount}
+                      placeholder="Enter amount (without ₹ sign)"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="numeric"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Type *</Text>
+                    <View style={styles.typeContainer}>
+                      <TouchableOpacity
+                        style={[
+                          styles.typeButton,
+                          type === "Jama" && styles.selectedTypeButton,
+                        ]}
+                        onPress={() => setType("Jama")}
+                      >
+                        <Text
+                          style={[
+                            styles.typeButtonText,
+                            type === "Jama" && styles.selectedTypeButtonText,
+                          ]}
+                        >
+                          Jama (+)
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.typeButton,
+                          type === "Udhar" && styles.selectedTypeButton,
+                        ]}
+                        onPress={() => setType("Udhar")}
+                      >
+                        <Text
+                          style={[
+                            styles.typeButtonText,
+                            type === "Udhar" && styles.selectedTypeButtonText,
+                          ]}
+                        >
+                          Udhar (-)
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Payment Method</Text>
+                    <View style={styles.paymentContainer}>
+                      {["Cash", "Online"].map((method) => (
+                        <TouchableOpacity
+                          key={method}
+                          style={[
+                            styles.paymentButton,
+                            paymentMethod === method &&
+                              styles.selectedPaymentButton,
+                          ]}
+                          onPress={() => setPaymentMethod(method)}
+                        >
+                          <Text
+                            style={[
+                              styles.paymentButtonText,
+                              paymentMethod === method &&
+                                styles.selectedPaymentButtonText,
+                            ]}
+                          >
+                            {method}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>
+                      Description (Optional)
+                    </Text>
+                    <TextInput
+                      style={[styles.textInput, styles.textArea]}
+                      value={description}
+                      onChangeText={setDescription}
+                      placeholder="Enter description"
+                      placeholderTextColor="#9ca3af"
+                      multiline={true}
+                      numberOfLines={3}
+                    />
+                  </View>
+
+                  <View style={styles.buttonContainer}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() => setModalVisible(false)}
+                    >
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.saveButton}
+                      onPress={handleAddExpense}
+                    >
+                      <Text style={styles.saveButtonText}>Add Expense</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </TouchableOpacity>
           </TouchableOpacity>
-        </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -589,7 +615,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111827",
     flex: 1,
-    paddingLeft: 30,
     textAlign: "center",
   },
   selectModeButton: {
@@ -610,10 +635,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
-  selectionActions: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+
   selectAllButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -625,8 +647,53 @@ const styles = StyleSheet.create({
     color: "#6366f1",
     fontWeight: "500",
   },
+  categorySection: {
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  mainContent: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#6b7280",
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#6b7280",
+    textAlign: "center",
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: "#9ca3af",
+    textAlign: "center",
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  expenseList: {
+    padding: 16,
+  },
+  expenseItemWrapper: {
+    marginBottom: 12,
+  },
   categoryScrollContainer: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   categoryContainer: {
     flexDirection: "row",
@@ -635,7 +702,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
     height: 65,
-    // height: "fit-content",
   },
   categoryButton: {
     paddingHorizontal: 16,
@@ -655,9 +721,17 @@ const styles = StyleSheet.create({
   selectedCategoryButtonText: {
     color: "white",
   },
-  listContainer: {
-    padding: 16,
-    flexGrow: 1,
+  expenseListSection: {
+    flex: 1,
+    backgroundColor: "#f9fafb",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  expenseScrollView: {
+    flex: 1,
+  },
+  expenseScrollContent: {
+    paddingBottom: 100,
   },
   expenseItem: {
     backgroundColor: "white",
@@ -789,21 +863,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-  emptyContainer: {
+  emptyStateContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 20,
-    marginBottom: 200,
+    paddingVertical: 40,
   },
-  emptyText: {
+  emptyStateText: {
     fontSize: 16,
     color: "#6b7280",
     textAlign: "center",
-    marginTop: 6,
+    marginTop: 12,
     marginBottom: 8,
   },
-  emptySubtext: {
+  emptyStateSubtext: {
     fontSize: 14,
     color: "#9ca3af",
     textAlign: "center",
@@ -821,7 +894,9 @@ const styles = StyleSheet.create({
     padding: 0,
     width: "100%",
     maxWidth: 400,
-    maxHeight: "90%",
+    overflow: "hidden",
+    minHeight: 500,
+    maxHeight: "80%",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -830,6 +905,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+    // flexDirection: "column",
+  },
+  keyboardAvoidingView: {
+    // justifyContent: "center",
+    // alignItems: "center",
+    flex: 1,
+    // width: "100%",
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    paddingBottom: 20,
+    flexGrow: 1,
   },
   modalHeader: {
     flexDirection: "row",

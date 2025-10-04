@@ -42,8 +42,10 @@ export default function PartyLedger() {
       id: Date.now(),
       amount: "",
       type: "Jama",
-      rounds: "",
+      rounds: "1",
       date: new Date().toISOString().split("T")[0],
+      description: "",
+      baseAmount: "", // Store base amount for calculation
     },
   ]);
 
@@ -86,6 +88,9 @@ export default function PartyLedger() {
       // Load transactions for this party
       const transactionData = await transactionsAPI.getByParty(currentParty.id);
 
+      // Debug: Check if description field is being fetched
+      console.log("Transaction data sample:", transactionData[0]);
+
       // Calculate separate totals for Jama and Udhar
       let balance = 0;
       let jamaTotal = 0;
@@ -111,6 +116,7 @@ export default function PartyLedger() {
               : `-₹${Math.abs(transactionAmount).toFixed(2)}`,
           type: transaction.type,
           rounds: transaction.rounds,
+          description: transaction.description || "",
           runningBalance: `₹${balance.toFixed(2)}`,
           rawAmount: transactionAmount,
         };
@@ -138,14 +144,17 @@ export default function PartyLedger() {
     // Validate all entries
     for (let i = 0; i < transactionEntries.length; i++) {
       const entry = transactionEntries[i];
-      if (!entry.amount.trim()) {
-        Alert.alert("Error", `Please enter amount for transaction ${i + 1}`);
-        return;
-      }
-      if (!entry.rounds.trim()) {
+      if (!entry.baseAmount.trim()) {
         Alert.alert(
           "Error",
-          `Please enter number of rounds for transaction ${i + 1}`
+          `Please enter base amount for transaction ${i + 1}`
+        );
+        return;
+      }
+      if (!entry.rounds.trim() || parseInt(entry.rounds) < 1) {
+        Alert.alert(
+          "Error",
+          `Please enter valid number of rounds for transaction ${i + 1}`
         );
         return;
       }
@@ -169,6 +178,7 @@ export default function PartyLedger() {
           amount: finalAmount,
           type: entry.type,
           rounds: parseInt(entry.rounds),
+          description: entry.description || "",
           running_balance: 0, // Will be calculated properly in sequence
         };
 
@@ -183,8 +193,10 @@ export default function PartyLedger() {
           id: Date.now(),
           amount: "",
           type: "Jama",
-          rounds: "",
+          rounds: "1",
           date: new Date().toISOString().split("T")[0],
+          description: "",
+          baseAmount: "",
         },
       ]);
       setModalVisible(false);
@@ -209,8 +221,10 @@ export default function PartyLedger() {
         id: Date.now() + Math.random(),
         amount: "",
         type: "Jama",
-        rounds: "",
+        rounds: "1",
         date: new Date().toISOString().split("T")[0],
+        description: "",
+        baseAmount: "",
       },
     ]);
   };
@@ -225,10 +239,45 @@ export default function PartyLedger() {
 
   const updateTransactionEntry = (id, field, value) => {
     setTransactionEntries(
-      transactionEntries.map((entry) =>
-        entry.id === id ? { ...entry, [field]: value } : entry
-      )
+      transactionEntries.map((entry) => {
+        if (entry.id === id) {
+          const updatedEntry = { ...entry, [field]: value };
+
+          // If updating baseAmount, calculate total amount
+          if (field === "baseAmount") {
+            const rounds = parseInt(updatedEntry.rounds) || 1;
+            const baseAmount = parseFloat(value) || 0;
+            updatedEntry.amount = (baseAmount * rounds).toString();
+          }
+
+          // If updating rounds, recalculate amount based on baseAmount
+          if (field === "rounds") {
+            const rounds = parseInt(value) || 1;
+            const baseAmount = parseFloat(updatedEntry.baseAmount) || 0;
+            if (baseAmount > 0) {
+              updatedEntry.amount = (baseAmount * rounds).toString();
+            }
+          }
+
+          return updatedEntry;
+        }
+        return entry;
+      })
     );
+  };
+
+  const incrementRounds = (id) => {
+    const entry = transactionEntries.find((e) => e.id === id);
+    const currentRounds = parseInt(entry.rounds) || 1;
+    updateTransactionEntry(id, "rounds", (currentRounds + 1).toString());
+  };
+
+  const decrementRounds = (id) => {
+    const entry = transactionEntries.find((e) => e.id === id);
+    const currentRounds = parseInt(entry.rounds) || 1;
+    if (currentRounds > 1) {
+      updateTransactionEntry(id, "rounds", (currentRounds - 1).toString());
+    }
   };
 
   // Selection functions
@@ -361,23 +410,30 @@ export default function PartyLedger() {
         )}
 
         <View style={styles.ledgerContent}>
-          <View style={styles.ledgerLeft}>
-            <Text style={styles.ledgerDate}>{item.date}</Text>
-            <Text style={styles.ledgerDay}>{getDayName(item.date)}</Text>
-            <Text style={styles.ledgerRounds}>Rounds: {item.rounds}</Text>
+          <View style={styles.ledgerTop}>
+            <View style={styles.ledgerLeft}>
+              <Text style={styles.ledgerDate}>{item.date}</Text>
+              <Text style={styles.ledgerDay}>{getDayName(item.date)}</Text>
+              <Text style={styles.ledgerRounds}>Rounds: {item.rounds}</Text>
+            </View>
+            <View style={styles.ledgerRight}>
+              <Text
+                style={[
+                  styles.ledgerAmount,
+                  item.type === "Jama" ? styles.jamaAmount : styles.udharAmount,
+                ]}
+              >
+                {item.amount}
+              </Text>
+            </View>
           </View>
-          <View style={styles.ledgerRight}>
-            <Text
-              style={[
-                styles.ledgerAmount,
-                item.type === "Jama" ? styles.jamaAmount : styles.udharAmount,
-              ]}
-            >
-              {item.amount}
+
+          {/* Description section at the bottom of every card */}
+          <View style={styles.descriptionSection}>
+            <Text style={styles.descriptionLabel}>Description:</Text>
+            <Text style={styles.ledgerDescription}>
+              {item.description || "No description provided"}
             </Text>
-            {/* <Text style={styles.runningBalance}>
-              Running Balance: {item.runningBalance}
-            </Text> */}
           </View>
         </View>
 
@@ -618,17 +674,35 @@ export default function PartyLedger() {
                       </View>
 
                       <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Amount *</Text>
+                        <Text style={styles.inputLabel}>
+                          Base Amount per Round *
+                        </Text>
                         <TextInput
                           style={styles.textInput}
-                          value={entry.amount}
+                          value={entry.baseAmount}
                           onChangeText={(value) =>
-                            updateTransactionEntry(entry.id, "amount", value)
+                            updateTransactionEntry(
+                              entry.id,
+                              "baseAmount",
+                              value
+                            )
                           }
-                          placeholder="Enter amount (without ₹ sign)"
+                          placeholder="Enter amount per round (without ₹ sign)"
                           placeholderTextColor="#9ca3af"
                           keyboardType="numeric"
                         />
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Total Amount</Text>
+                        <View style={styles.totalAmountContainer}>
+                          <Text style={styles.totalAmountText}>
+                            ₹{entry.amount || "0"}
+                          </Text>
+                          <Text style={styles.calculationText}>
+                            ({entry.baseAmount || "0"} × {entry.rounds} rounds)
+                          </Text>
+                        </View>
                       </View>
 
                       <View style={styles.inputGroup}>
@@ -679,15 +753,49 @@ export default function PartyLedger() {
 
                       <View style={styles.inputGroup}>
                         <Text style={styles.inputLabel}>Rounds *</Text>
+                        <View style={styles.roundsContainer}>
+                          <TouchableOpacity
+                            style={styles.roundsButton}
+                            onPress={() => decrementRounds(entry.id)}
+                          >
+                            <Ionicons name="remove" size={20} color="#6366f1" />
+                          </TouchableOpacity>
+                          <TextInput
+                            style={styles.roundsInput}
+                            value={entry.rounds}
+                            onChangeText={(value) =>
+                              updateTransactionEntry(entry.id, "rounds", value)
+                            }
+                            placeholder="1"
+                            placeholderTextColor="#9ca3af"
+                            keyboardType="numeric"
+                            textAlign="center"
+                          />
+                          <TouchableOpacity
+                            style={styles.roundsButton}
+                            onPress={() => incrementRounds(entry.id)}
+                          >
+                            <Ionicons name="add" size={20} color="#6366f1" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Description</Text>
                         <TextInput
-                          style={styles.textInput}
-                          value={entry.rounds}
+                          style={[styles.textInput, styles.descriptionInput]}
+                          value={entry.description}
                           onChangeText={(value) =>
-                            updateTransactionEntry(entry.id, "rounds", value)
+                            updateTransactionEntry(
+                              entry.id,
+                              "description",
+                              value
+                            )
                           }
-                          placeholder="Enter number of rounds"
+                          placeholder="Enter description (optional)"
                           placeholderTextColor="#9ca3af"
-                          keyboardType="numeric"
+                          multiline={true}
+                          numberOfLines={2}
                         />
                       </View>
                     </View>
@@ -884,8 +992,12 @@ const styles = StyleSheet.create({
   },
   ledgerContent: {
     flex: 1,
+    flexDirection: "column",
+  },
+  ledgerTop: {
     flexDirection: "row",
     justifyContent: "space-between",
+    marginBottom: 8,
   },
   ledgerLeft: {
     flex: 1,
@@ -908,7 +1020,27 @@ const styles = StyleSheet.create({
   },
   ledgerRight: {
     alignItems: "flex-end",
+    marginRight: 40,
+    marginTop: 10,
     flex: 1,
+  },
+  descriptionSection: {
+    backgroundColor: "#f8fafc",
+    padding: 8,
+    borderRadius: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: "#e2e8f0",
+  },
+  descriptionLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#64748b",
+    marginBottom: 2,
+  },
+  ledgerDescription: {
+    fontSize: 13,
+    color: "#475569",
+    lineHeight: 18,
   },
   ledgerAmount: {
     fontSize: 16,
@@ -927,8 +1059,9 @@ const styles = StyleSheet.create({
     color: "#6b7280",
   },
   deleteButton: {
-    padding: 8,
-    marginLeft: 8,
+    position: "absolute",
+    top: 10,
+    right: 10,
   },
   addButton: {
     position: "absolute",
@@ -1091,6 +1224,52 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#111827",
     backgroundColor: "#f9fafb",
+  },
+  descriptionInput: {
+    minHeight: 60,
+    textAlignVertical: "top",
+  },
+  roundsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    backgroundColor: "#f9fafb",
+  },
+  roundsButton: {
+    padding: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f0f9ff",
+    borderRadius: 6,
+    margin: 2,
+  },
+  roundsInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: "#111827",
+    backgroundColor: "transparent",
+  },
+  totalAmountContainer: {
+    backgroundColor: "#f8fafc",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  totalAmountText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#059669",
+    marginBottom: 4,
+  },
+  calculationText: {
+    fontSize: 14,
+    color: "#6b7280",
+    fontStyle: "italic",
   },
   typeContainer: {
     flexDirection: "row",

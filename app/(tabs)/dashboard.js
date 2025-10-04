@@ -1,4 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -43,6 +45,9 @@ export default function Dashboard() {
   const [transactionModalVisible, setTransactionModalVisible] = useState(false);
   const [selectedParty, setSelectedParty] = useState(null);
 
+  // PDF Generation modal
+  const [pdfModalVisible, setPdfModalVisible] = useState(false);
+
   // Expense modals
   const [expenseTypeModalVisible, setExpenseTypeModalVisible] = useState(false);
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
@@ -54,8 +59,10 @@ export default function Dashboard() {
       id: Date.now(),
       amount: "",
       type: "Jama",
-      rounds: "",
+      rounds: "1",
       date: new Date().toISOString().split("T")[0],
+      description: "",
+      baseAmount: "",
     },
   ]);
 
@@ -141,14 +148,17 @@ export default function Dashboard() {
     // Validate all entries
     for (let i = 0; i < transactionEntries.length; i++) {
       const entry = transactionEntries[i];
-      if (!entry.amount.trim()) {
-        Alert.alert("Error", `Please enter amount for transaction ${i + 1}`);
-        return;
-      }
-      if (!entry.rounds.trim()) {
+      if (!entry.baseAmount.trim()) {
         Alert.alert(
           "Error",
-          `Please enter number of rounds for transaction ${i + 1}`
+          `Please enter base amount for transaction ${i + 1}`
+        );
+        return;
+      }
+      if (!entry.rounds.trim() || parseInt(entry.rounds) < 1) {
+        Alert.alert(
+          "Error",
+          `Please enter valid number of rounds for transaction ${i + 1}`
         );
         return;
       }
@@ -172,6 +182,7 @@ export default function Dashboard() {
           amount: finalAmount,
           type: entry.type,
           rounds: parseInt(entry.rounds),
+          description: entry.description || "",
           running_balance: 0, // Will be calculated properly in sequence
         };
 
@@ -186,8 +197,10 @@ export default function Dashboard() {
           id: Date.now(),
           amount: "",
           type: "Jama",
-          rounds: "",
+          rounds: "1",
           date: new Date().toISOString().split("T")[0],
+          description: "",
+          baseAmount: "",
         },
       ]);
       setTransactionModalVisible(false);
@@ -213,8 +226,10 @@ export default function Dashboard() {
         id: Date.now() + Math.random(),
         amount: "",
         type: "Jama",
-        rounds: "",
+        rounds: "1",
         date: new Date().toISOString().split("T")[0],
+        description: "",
+        baseAmount: "",
       },
     ]);
   };
@@ -229,10 +244,45 @@ export default function Dashboard() {
 
   const updateTransactionEntry = (id, field, value) => {
     setTransactionEntries(
-      transactionEntries.map((entry) =>
-        entry.id === id ? { ...entry, [field]: value } : entry
-      )
+      transactionEntries.map((entry) => {
+        if (entry.id === id) {
+          const updatedEntry = { ...entry, [field]: value };
+
+          // If updating baseAmount, calculate total amount
+          if (field === "baseAmount") {
+            const rounds = parseInt(updatedEntry.rounds) || 1;
+            const baseAmount = parseFloat(value) || 0;
+            updatedEntry.amount = (baseAmount * rounds).toString();
+          }
+
+          // If updating rounds, recalculate amount based on baseAmount
+          if (field === "rounds") {
+            const rounds = parseInt(value) || 1;
+            const baseAmount = parseFloat(updatedEntry.baseAmount) || 0;
+            if (baseAmount > 0) {
+              updatedEntry.amount = (baseAmount * rounds).toString();
+            }
+          }
+
+          return updatedEntry;
+        }
+        return entry;
+      })
     );
+  };
+
+  const incrementRounds = (id) => {
+    const entry = transactionEntries.find((e) => e.id === id);
+    const currentRounds = parseInt(entry.rounds) || 1;
+    updateTransactionEntry(id, "rounds", (currentRounds + 1).toString());
+  };
+
+  const decrementRounds = (id) => {
+    const entry = transactionEntries.find((e) => e.id === id);
+    const currentRounds = parseInt(entry.rounds) || 1;
+    if (currentRounds > 1) {
+      updateTransactionEntry(id, "rounds", (currentRounds - 1).toString());
+    }
   };
 
   const handleExpenseTypeSelect = (expenseType) => {
@@ -289,12 +339,199 @@ export default function Dashboard() {
     }
   };
 
+  // PDF Generation Functions (copied from reports.js)
+  const generatePartyReport = (party, transactions, options = {}) => {
+    const totalJama = transactions
+      .filter((t) => t.type === "Jama")
+      .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+
+    const totalUdhar = transactions
+      .filter((t) => t.type === "Udhar")
+      .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+
+    const balance = totalJama - totalUdhar;
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Party Report - ${party.name}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .party-info { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+            .summary { display: flex; justify-content: space-around; margin-bottom: 30px; }
+            .summary-item { text-align: center; }
+            .summary-value { font-size: 18px; font-weight: bold; }
+            .jama { color: #059669; }
+            .udhar { color: #dc2626; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            .date { font-size: 12px; color: #666; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Transport Ledger Report</h1>
+            <h2>${party.name}</h2>
+            <p class="date">Generated on: ${new Date().toLocaleDateString()}</p>
+          </div>
+          
+          ${
+            options.includeSummaryMessage
+              ? `
+          <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196f3;">
+            <h3 style="margin-top: 0; color: #1976d2;">📱 WhatsApp Message</h3>
+            <p style="margin-bottom: 0; font-style: italic;">
+              Hi ${party.name}, here is your transport ledger report:<br><br>
+              📊 <strong>Transport Ledger Summary</strong><br>
+              Party: ${party.name}<br>
+              Date: ${new Date().toLocaleDateString()}<br><br>
+              💰 <strong>Financial Summary:</strong><br>
+              Total Amount: ₹${totalUdhar.toFixed(2)}<br><br>
+              📋 Total Transactions: ${transactions.length}<br><br>
+              Thank you for your business!
+            </p>
+          </div>
+          `
+              : ""
+          }
+          
+          <div class="party-info">
+            <p><strong>Party Name:</strong> ${party.name}</p>
+            ${
+              party.phone_number
+                ? `<p><strong>Phone:</strong> ${party.phone_number}</p>`
+                : ""
+            }
+          </div>
+
+          <div class="summary">
+            <div class="summary-item">
+              <div class="summary-value jama">₹${totalJama.toFixed(2)}</div>
+              <div>Total Jama</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-value udhar">₹${totalUdhar.toFixed(2)}</div>
+              <div>Total Udhar</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Rounds</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${transactions
+                .map(
+                  (transaction) => `
+                <tr>
+                  <td>${transaction.date}</td>
+                  <td>${transaction.type}</td>
+                  <td class="${transaction.type.toLowerCase()}">₹${Math.abs(
+                    parseFloat(transaction.amount)
+                  ).toFixed(2)}</td>
+                  <td>${transaction.rounds}</td>
+                  <td>${transaction.description || "-"}</td>
+                </tr>
+              `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    return {
+      totalJama,
+      totalUdhar,
+      balance,
+      transactions,
+      party,
+      htmlContent,
+    };
+  };
+
+  const shareToWhatsApp = async (party, reportData, fileUri) => {
+    try {
+      // Simple manual PDF sharing - message is embedded in PDF
+      await Sharing.shareAsync(fileUri, {
+        mimeType: "application/pdf",
+        UTI: "com.adobe.pdf",
+        dialogTitle: "Share via WhatsApp",
+      });
+
+      // No alert needed - user will see the share picker
+    } catch (error) {
+      console.error("Error sharing to WhatsApp:", error);
+      Alert.alert("Error", "Failed to share PDF");
+    }
+  };
+
+  const handleGeneratePDF = async (party) => {
+    try {
+      // Get transactions for this party
+      const transactions = await transactionsAPI.getByParty(party.id);
+
+      // Generate report data with HTML content (include WhatsApp message in PDF)
+      const reportData = generatePartyReport(party, transactions, {
+        includeSummaryMessage: true,
+      });
+
+      // Generate PDF
+      const { uri } = await Print.printToFileAsync({
+        html: reportData.htmlContent,
+        base64: false,
+      });
+
+      // Share to WhatsApp
+      await shareToWhatsApp(party, reportData, uri);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      Alert.alert("Error", "Failed to generate PDF. Please try again.");
+    }
+  };
+
   const renderPartyItem = ({ item }) => (
+    <View style={styles.partySelectItem}>
+      <TouchableOpacity
+        style={styles.partySelectMain}
+        onPress={() => handlePartySelect(item)}
+      >
+        <Text style={styles.partySelectName}>{item.name}</Text>
+        <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+      </TouchableOpacity>
+      {/* <TouchableOpacity
+        style={styles.pdfButton}
+        onPress={() => handleGeneratePDF(item)}
+      >
+        <Ionicons name="document-text-outline" size={20} color="#6366f1" />
+        <Text style={styles.pdfButtonText}>PDF</Text>
+      </TouchableOpacity> */}
+    </View>
+  );
+
+  const renderPartyItemForPDF = ({ item }) => (
     <TouchableOpacity
-      style={styles.partySelectItem}
-      onPress={() => handlePartySelect(item)}
+      style={styles.pdfPartyItem}
+      onPress={() => {
+        setPdfModalVisible(false);
+        handleGeneratePDF(item);
+      }}
     >
-      <Text style={styles.partySelectName}>{item.name}</Text>
+      <View style={styles.pdfPartyInfo}>
+        <Ionicons name="document-text-outline" size={24} color="#6366f1" />
+        <Text style={styles.pdfPartyName}>{item.name}</Text>
+      </View>
       <Ionicons name="chevron-forward" size={20} color="#6b7280" />
     </TouchableOpacity>
   );
@@ -366,7 +603,10 @@ export default function Dashboard() {
             <Text style={styles.secondaryButtonText}>Add Expense</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.tertiaryButton}>
+          <TouchableOpacity
+            style={styles.tertiaryButton}
+            onPress={() => setPdfModalVisible(true)}
+          >
             <Text style={styles.tertiaryButtonText}>Generate PDF</Text>
           </TouchableOpacity>
         </View>
@@ -504,17 +744,35 @@ export default function Dashboard() {
                       </View>
 
                       <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Amount *</Text>
+                        <Text style={styles.inputLabel}>
+                          Base Amount per Round *
+                        </Text>
                         <TextInput
                           style={styles.textInput}
-                          value={entry.amount}
+                          value={entry.baseAmount}
                           onChangeText={(value) =>
-                            updateTransactionEntry(entry.id, "amount", value)
+                            updateTransactionEntry(
+                              entry.id,
+                              "baseAmount",
+                              value
+                            )
                           }
-                          placeholder="Enter amount (without ₹ sign)"
+                          placeholder="Enter amount per round (without ₹ sign)"
                           placeholderTextColor="#9ca3af"
                           keyboardType="numeric"
                         />
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Total Amount</Text>
+                        <View style={styles.totalAmountContainer}>
+                          <Text style={styles.totalAmountText}>
+                            ₹{entry.amount || "0"}
+                          </Text>
+                          <Text style={styles.calculationText}>
+                            ({entry.baseAmount || "0"} × {entry.rounds} rounds)
+                          </Text>
+                        </View>
                       </View>
 
                       <View style={styles.inputGroup}>
@@ -565,15 +823,49 @@ export default function Dashboard() {
 
                       <View style={styles.inputGroup}>
                         <Text style={styles.inputLabel}>Rounds *</Text>
+                        <View style={styles.roundsContainer}>
+                          <TouchableOpacity
+                            style={styles.roundsButton}
+                            onPress={() => decrementRounds(entry.id)}
+                          >
+                            <Ionicons name="remove" size={20} color="#6366f1" />
+                          </TouchableOpacity>
+                          <TextInput
+                            style={styles.roundsInput}
+                            value={entry.rounds}
+                            onChangeText={(value) =>
+                              updateTransactionEntry(entry.id, "rounds", value)
+                            }
+                            placeholder="1"
+                            placeholderTextColor="#9ca3af"
+                            keyboardType="numeric"
+                            textAlign="center"
+                          />
+                          <TouchableOpacity
+                            style={styles.roundsButton}
+                            onPress={() => incrementRounds(entry.id)}
+                          >
+                            <Ionicons name="add" size={20} color="#6366f1" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Description</Text>
                         <TextInput
-                          style={styles.textInput}
-                          value={entry.rounds}
+                          style={[styles.textInput, styles.descriptionInput]}
+                          value={entry.description}
                           onChangeText={(value) =>
-                            updateTransactionEntry(entry.id, "rounds", value)
+                            updateTransactionEntry(
+                              entry.id,
+                              "description",
+                              value
+                            )
                           }
-                          placeholder="Enter number of rounds"
+                          placeholder="Enter description (optional)"
                           placeholderTextColor="#9ca3af"
-                          keyboardType="numeric"
+                          multiline={true}
+                          numberOfLines={2}
                         />
                       </View>
                     </View>
@@ -811,6 +1103,62 @@ export default function Dashboard() {
           </TouchableOpacity>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* PDF Generation Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={pdfModalVisible}
+        onRequestClose={() => setPdfModalVisible(false)}
+        presentationStyle="overFullScreen"
+        statusBarTranslucent={true}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setPdfModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalContent}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Generate PDF Report</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setPdfModalVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={parties}
+              renderItem={renderPartyItemForPDF}
+              keyExtractor={(item) => item.id}
+              style={styles.pdfPartyList}
+              contentContainerStyle={styles.pdfPartyListContent}
+              showsVerticalScrollIndicator={true}
+              scrollEnabled={true}
+              bounces={true}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Ionicons
+                    name="document-text-outline"
+                    size={48}
+                    color="#9ca3af"
+                  />
+                  <Text style={styles.emptyText}>No parties found</Text>
+                  <Text style={styles.emptySubtext}>
+                    Add parties first to generate PDF reports
+                  </Text>
+                </View>
+              }
+            />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -841,9 +1189,21 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 12,
     marginBottom: 16,
+    // Shadow styles for elevated card effect
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 3,
+    // Fix for Android elevation border radius
+    borderWidth: 0.2,
+    borderColor: "rgba(0,0,0,0.05)",
   },
   expenseCard: {
-    backgroundColor: "#ecfdf5",
+    backgroundColor: "#fff",
   },
   udharCard: {
     backgroundColor: "#fef2f2",
@@ -946,6 +1306,8 @@ const styles = StyleSheet.create({
     padding: 0,
     width: "100%",
     maxWidth: 400,
+    overflow: "hidden",
+    minHeight: "fit-content",
     maxHeight: "80%",
     shadowColor: "#000",
     shadowOffset: {
@@ -978,19 +1340,69 @@ const styles = StyleSheet.create({
   },
   partySelectItem: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
+  },
+  partySelectMain: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flex: 1,
+    marginRight: 12,
   },
   partySelectName: {
     fontSize: 16,
     color: "#111827",
     flex: 1,
   },
+  pdfButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f0f9ff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#e0e7ff",
+  },
+  pdfButtonText: {
+    fontSize: 12,
+    color: "#6366f1",
+    fontWeight: "600",
+    marginLeft: 4,
+  },
+  pdfPartyItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+    backgroundColor: "#fefefe",
+  },
+  pdfPartyInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  pdfPartyName: {
+    fontSize: 16,
+    color: "#111827",
+    marginLeft: 12,
+    flex: 1,
+  },
+  pdfPartyList: {
+    maxHeight: "100%",
+    marginBottom: 15,
+    // flexGrow: 1,
+  },
+  pdfPartyListContent: {
+    // paddingBottom: 20,
+  },
   expenseTypeList: {
-    maxHeight: 300,
+    maxHeight: 200,
   },
   expenseTypeItem: {
     flexDirection: "row",
@@ -1045,6 +1457,52 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#111827",
     backgroundColor: "#f9fafb",
+  },
+  descriptionInput: {
+    minHeight: 60,
+    textAlignVertical: "top",
+  },
+  roundsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    backgroundColor: "#f9fafb",
+  },
+  roundsButton: {
+    padding: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f0f9ff",
+    borderRadius: 6,
+    margin: 2,
+  },
+  roundsInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: "#111827",
+    backgroundColor: "transparent",
+  },
+  totalAmountContainer: {
+    backgroundColor: "#f8fafc",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  totalAmountText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#059669",
+    marginBottom: 4,
+  },
+  calculationText: {
+    fontSize: 14,
+    color: "#6b7280",
+    fontStyle: "italic",
   },
   textArea: {
     height: 80,

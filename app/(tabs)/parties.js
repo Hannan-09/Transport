@@ -591,7 +591,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     padding: 16,
     marginBottom: 12,
-    borderRadius: 8,
+    borderRadius: 16,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -599,7 +599,10 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 1,
+    elevation: 2,
+    // Better fix for Android elevation border radius
+    borderWidth: 0.2,
+    borderColor: "rgba(0,0,0,0.05)",
   },
   selectableItem: {
     borderWidth: 2,
