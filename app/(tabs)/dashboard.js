@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -319,7 +320,14 @@ export default function Dashboard() {
         <Text style={styles.headerTitle}>Transport Ledger</Text>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.scrollContentContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <View style={[styles.summaryCard, styles.udharCard]}>
           <Text style={styles.cardTitle}>Total Udhar</Text>
           <Text style={[styles.cardAmount, styles.udharAmount]}>
@@ -362,27 +370,7 @@ export default function Dashboard() {
             <Text style={styles.tertiaryButtonText}>Generate PDF</Text>
           </TouchableOpacity>
         </View>
-      </View>
-
-      {/* Refresh Control */}
-      <View style={styles.refreshContainer}>
-        <TouchableOpacity
-          style={styles.refreshButton}
-          onPress={onRefresh}
-          disabled={refreshing}
-        >
-          <Ionicons
-            name="refresh"
-            size={20}
-            color={refreshing ? "#9ca3af" : "#6366f1"}
-          />
-          <Text
-            style={[styles.refreshText, refreshing && styles.refreshingText]}
-          >
-            {refreshing ? "Refreshing..." : "Refresh"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       {/* Party Selection Modal */}
       <Modal
@@ -665,149 +653,163 @@ export default function Dashboard() {
         presentationStyle="overFullScreen"
         statusBarTranslucent={true}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setExpenseModalVisible(false)}
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoidingView}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <TouchableOpacity
-            style={styles.modalContent}
+            style={styles.modalOverlay}
             activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
+            onPress={() => setExpenseModalVisible(false)}
           >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                Add Expense - {selectedExpenseType?.name}
-              </Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setExpenseModalVisible(false)}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.formContainer}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Date</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={expenseDate}
-                  onChangeText={setExpenseDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Amount *</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={expenseAmount}
-                  onChangeText={setExpenseAmount}
-                  placeholder="Enter amount (without ₹ sign)"
-                  placeholderTextColor="#9ca3af"
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Type *</Text>
-                <View style={styles.typeContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.typeButton,
-                      expenseType === "Jama" && styles.selectedTypeButton,
-                    ]}
-                    onPress={() => setExpenseType("Jama")}
-                  >
-                    <Text
-                      style={[
-                        styles.typeButtonText,
-                        expenseType === "Jama" && styles.selectedTypeButtonText,
-                      ]}
-                    >
-                      Jama (+)
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.typeButton,
-                      expenseType === "Udhar" && styles.selectedTypeButton,
-                    ]}
-                    onPress={() => setExpenseType("Udhar")}
-                  >
-                    <Text
-                      style={[
-                        styles.typeButtonText,
-                        expenseType === "Udhar" &&
-                          styles.selectedTypeButtonText,
-                      ]}
-                    >
-                      Udhar (-)
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Payment Method</Text>
-                <View style={styles.paymentContainer}>
-                  {["Cash", "Online"].map((method) => (
-                    <TouchableOpacity
-                      key={method}
-                      style={[
-                        styles.paymentButton,
-                        paymentMethod === method &&
-                          styles.selectedPaymentButton,
-                      ]}
-                      onPress={() => setPaymentMethod(method)}
-                    >
-                      <Text
-                        style={[
-                          styles.paymentButtonText,
-                          paymentMethod === method &&
-                            styles.selectedPaymentButtonText,
-                        ]}
-                      >
-                        {method}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Description (Optional)</Text>
-                <TextInput
-                  style={[styles.textInput, styles.textArea]}
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="Enter description"
-                  placeholderTextColor="#9ca3af"
-                  multiline={true}
-                  numberOfLines={3}
-                />
-              </View>
-
-              <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={styles.modalContent}
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  Add Expense - {selectedExpenseType?.name}
+                </Text>
                 <TouchableOpacity
-                  style={styles.cancelButton}
+                  style={styles.closeButton}
                   onPress={() => setExpenseModalVisible(false)}
                 >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.saveButton}
-                  onPress={handleAddExpense}
-                >
-                  <Text style={styles.saveButtonText}>Add Expense</Text>
+                  <Ionicons name="close" size={24} color="#6b7280" />
                 </TouchableOpacity>
               </View>
-            </View>
+
+              <ScrollView
+                style={styles.scrollContainer}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.formContainer}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Date</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={expenseDate}
+                      onChangeText={setExpenseDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor="#9ca3af"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Amount *</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={expenseAmount}
+                      onChangeText={setExpenseAmount}
+                      placeholder="Enter amount (without ₹ sign)"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="numeric"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Type *</Text>
+                    <View style={styles.typeContainer}>
+                      <TouchableOpacity
+                        style={[
+                          styles.typeButton,
+                          expenseType === "Jama" && styles.selectedTypeButton,
+                        ]}
+                        onPress={() => setExpenseType("Jama")}
+                      >
+                        <Text
+                          style={[
+                            styles.typeButtonText,
+                            expenseType === "Jama" &&
+                              styles.selectedTypeButtonText,
+                          ]}
+                        >
+                          Jama (+)
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.typeButton,
+                          expenseType === "Udhar" && styles.selectedTypeButton,
+                        ]}
+                        onPress={() => setExpenseType("Udhar")}
+                      >
+                        <Text
+                          style={[
+                            styles.typeButtonText,
+                            expenseType === "Udhar" &&
+                              styles.selectedTypeButtonText,
+                          ]}
+                        >
+                          Udhar (-)
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Payment Method</Text>
+                    <View style={styles.paymentContainer}>
+                      {["Cash", "Online"].map((method) => (
+                        <TouchableOpacity
+                          key={method}
+                          style={[
+                            styles.paymentButton,
+                            paymentMethod === method &&
+                              styles.selectedPaymentButton,
+                          ]}
+                          onPress={() => setPaymentMethod(method)}
+                        >
+                          <Text
+                            style={[
+                              styles.paymentButtonText,
+                              paymentMethod === method &&
+                                styles.selectedPaymentButtonText,
+                            ]}
+                          >
+                            {method}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>
+                      Description (Optional)
+                    </Text>
+                    <TextInput
+                      style={[styles.textInput, styles.textArea]}
+                      value={description}
+                      onChangeText={setDescription}
+                      placeholder="Enter description"
+                      placeholderTextColor="#9ca3af"
+                      multiline={true}
+                      numberOfLines={3}
+                    />
+                  </View>
+
+                  <View style={styles.buttonContainer}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() => setExpenseModalVisible(false)}
+                    >
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.saveButton}
+                      onPress={handleAddExpense}
+                    >
+                      <Text style={styles.saveButtonText}>Add Expense</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </TouchableOpacity>
           </TouchableOpacity>
-        </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -833,8 +835,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 50,
   },
   summaryCard: {
     backgroundColor: "#f3f4f6",
@@ -919,46 +919,19 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   tertiaryButton: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#dc2626",
     paddingVertical: 16,
     borderRadius: 25,
     alignItems: "center",
   },
   tertiaryButtonText: {
-    color: "#374151",
+    color: "#ffffff",
     fontSize: 16,
     fontWeight: "600",
   },
-  refreshContainer: {
-    position: "absolute",
-    top: 93,
-    // right: 20,
-    left: 0,
-  },
-  refreshButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  refreshText: {
-    marginLeft: 6,
-    fontSize: 14,
-    color: "#6366f1",
-    fontWeight: "500",
-  },
-  refreshingText: {
-    color: "#9ca3af",
+  scrollContentContainer: {
+    padding: 20,
+    paddingBottom: 40,
   },
   modalOverlay: {
     flex: 1,

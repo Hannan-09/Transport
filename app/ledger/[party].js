@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -542,171 +544,178 @@ export default function PartyLedger() {
         presentationStyle="overFullScreen"
         statusBarTranslucent={true}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoidingView}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <TouchableOpacity
-            style={styles.modalContent}
+            style={styles.modalOverlay}
             activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
+            onPress={() => setModalVisible(false)}
           >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                Add Transactions ({transactionEntries.length})
-              </Text>
-              <View style={styles.headerActions}>
-                <TouchableOpacity
-                  style={styles.addEntryButton}
-                  onPress={addNewTransactionEntry}
-                >
-                  <Ionicons name="add" size={20} color="#6366f1" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.closeButton}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Ionicons name="close" size={24} color="#6b7280" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <ScrollView
-              style={styles.scrollContainer}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
+            <TouchableOpacity
+              style={styles.modalContent}
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
             >
-              <View style={styles.formContainer}>
-                {transactionEntries.map((entry, index) => (
-                  <View key={entry.id} style={styles.transactionEntry}>
-                    <View style={styles.entryHeader}>
-                      <Text style={styles.entryTitle}>
-                        Transaction {index + 1}
-                      </Text>
-                      {transactionEntries.length > 1 && (
-                        <TouchableOpacity
-                          style={styles.removeButton}
-                          onPress={() => removeTransactionEntry(entry.id)}
-                        >
-                          <Ionicons
-                            name="trash-outline"
-                            size={16}
-                            color="#dc2626"
-                          />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Date</Text>
-                      <TextInput
-                        style={styles.textInput}
-                        value={entry.date}
-                        onChangeText={(value) =>
-                          updateTransactionEntry(entry.id, "date", value)
-                        }
-                        placeholder="YYYY-MM-DD"
-                        placeholderTextColor="#9ca3af"
-                      />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Amount *</Text>
-                      <TextInput
-                        style={styles.textInput}
-                        value={entry.amount}
-                        onChangeText={(value) =>
-                          updateTransactionEntry(entry.id, "amount", value)
-                        }
-                        placeholder="Enter amount (without ₹ sign)"
-                        placeholderTextColor="#9ca3af"
-                        keyboardType="numeric"
-                      />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Type *</Text>
-                      <View style={styles.typeContainer}>
-                        <TouchableOpacity
-                          style={[
-                            styles.typeButton,
-                            entry.type === "Jama" && styles.selectedTypeButton,
-                          ]}
-                          onPress={() =>
-                            updateTransactionEntry(entry.id, "type", "Jama")
-                          }
-                        >
-                          <Text
-                            style={[
-                              styles.typeButtonText,
-                              entry.type === "Jama" &&
-                                styles.selectedTypeButtonText,
-                            ]}
-                          >
-                            Jama (+)
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
-                            styles.typeButton,
-                            entry.type === "Udhar" && styles.selectedTypeButton,
-                          ]}
-                          onPress={() =>
-                            updateTransactionEntry(entry.id, "type", "Udhar")
-                          }
-                        >
-                          <Text
-                            style={[
-                              styles.typeButtonText,
-                              entry.type === "Udhar" &&
-                                styles.selectedTypeButtonText,
-                            ]}
-                          >
-                            Udhar (-)
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Rounds *</Text>
-                      <TextInput
-                        style={styles.textInput}
-                        value={entry.rounds}
-                        onChangeText={(value) =>
-                          updateTransactionEntry(entry.id, "rounds", value)
-                        }
-                        placeholder="Enter number of rounds"
-                        placeholderTextColor="#9ca3af"
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  </View>
-                ))}
-
-                <View style={styles.buttonContainer}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  Add Transactions ({transactionEntries.length})
+                </Text>
+                <View style={styles.headerActions}>
                   <TouchableOpacity
-                    style={styles.cancelButton}
+                    style={styles.addEntryButton}
+                    onPress={addNewTransactionEntry}
+                  >
+                    <Ionicons name="add" size={20} color="#6366f1" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.closeButton}
                     onPress={() => setModalVisible(false)}
                   >
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.saveButton}
-                    onPress={handleAddTransactions}
-                  >
-                    <Text style={styles.saveButtonText}>
-                      Add {transactionEntries.length} Transaction
-                      {transactionEntries.length > 1 ? "s" : ""}
-                    </Text>
+                    <Ionicons name="close" size={24} color="#6b7280" />
                   </TouchableOpacity>
                 </View>
               </View>
-            </ScrollView>
+
+              <ScrollView
+                style={styles.scrollContainer}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.formContainer}>
+                  {transactionEntries.map((entry, index) => (
+                    <View key={entry.id} style={styles.transactionEntry}>
+                      <View style={styles.entryHeader}>
+                        <Text style={styles.entryTitle}>
+                          Transaction {index + 1}
+                        </Text>
+                        {transactionEntries.length > 1 && (
+                          <TouchableOpacity
+                            style={styles.removeButton}
+                            onPress={() => removeTransactionEntry(entry.id)}
+                          >
+                            <Ionicons
+                              name="trash-outline"
+                              size={16}
+                              color="#dc2626"
+                            />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Date</Text>
+                        <TextInput
+                          style={styles.textInput}
+                          value={entry.date}
+                          onChangeText={(value) =>
+                            updateTransactionEntry(entry.id, "date", value)
+                          }
+                          placeholder="YYYY-MM-DD"
+                          placeholderTextColor="#9ca3af"
+                        />
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Amount *</Text>
+                        <TextInput
+                          style={styles.textInput}
+                          value={entry.amount}
+                          onChangeText={(value) =>
+                            updateTransactionEntry(entry.id, "amount", value)
+                          }
+                          placeholder="Enter amount (without ₹ sign)"
+                          placeholderTextColor="#9ca3af"
+                          keyboardType="numeric"
+                        />
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Type *</Text>
+                        <View style={styles.typeContainer}>
+                          <TouchableOpacity
+                            style={[
+                              styles.typeButton,
+                              entry.type === "Jama" &&
+                                styles.selectedTypeButton,
+                            ]}
+                            onPress={() =>
+                              updateTransactionEntry(entry.id, "type", "Jama")
+                            }
+                          >
+                            <Text
+                              style={[
+                                styles.typeButtonText,
+                                entry.type === "Jama" &&
+                                  styles.selectedTypeButtonText,
+                              ]}
+                            >
+                              Jama (+)
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[
+                              styles.typeButton,
+                              entry.type === "Udhar" &&
+                                styles.selectedTypeButton,
+                            ]}
+                            onPress={() =>
+                              updateTransactionEntry(entry.id, "type", "Udhar")
+                            }
+                          >
+                            <Text
+                              style={[
+                                styles.typeButtonText,
+                                entry.type === "Udhar" &&
+                                  styles.selectedTypeButtonText,
+                              ]}
+                            >
+                              Udhar (-)
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Rounds *</Text>
+                        <TextInput
+                          style={styles.textInput}
+                          value={entry.rounds}
+                          onChangeText={(value) =>
+                            updateTransactionEntry(entry.id, "rounds", value)
+                          }
+                          placeholder="Enter number of rounds"
+                          placeholderTextColor="#9ca3af"
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+                  ))}
+
+                  <View style={styles.buttonContainer}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() => setModalVisible(false)}
+                    >
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.saveButton}
+                      onPress={handleAddTransactions}
+                    >
+                      <Text style={styles.saveButtonText}>
+                        Add {transactionEntries.length} Transaction
+                        {transactionEntries.length > 1 ? "s" : ""}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </TouchableOpacity>
           </TouchableOpacity>
-        </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -430,81 +433,93 @@ export default function Parties() {
         presentationStyle="overFullScreen"
         statusBarTranslucent={true}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoidingView}
+          behavior={Platform.OS === "ios" ? "position" : "padding"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
         >
           <TouchableOpacity
-            style={styles.modalContent}
+            style={styles.modalOverlay}
             activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
+            onPress={() => setModalVisible(false)}
           >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add New Party</Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setModalVisible(false)}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.formContainer}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Party Name *</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={partyName}
-                  onChangeText={setPartyName}
-                  placeholder="Enter party name"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Phone Number</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={phoneNumber}
-                  onChangeText={setPhoneNumber}
-                  placeholder="Enter phone number"
-                  placeholderTextColor="#9ca3af"
-                  keyboardType="phone-pad"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Address</Text>
-                <TextInput
-                  style={[styles.textInput, styles.textArea]}
-                  value={address}
-                  onChangeText={setAddress}
-                  placeholder="Enter address"
-                  placeholderTextColor="#9ca3af"
-                  multiline={true}
-                  numberOfLines={3}
-                />
-              </View>
-
-              <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={styles.modalContent}
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Add New Party</Text>
                 <TouchableOpacity
-                  style={styles.cancelButton}
+                  style={styles.closeButton}
                   onPress={() => setModalVisible(false)}
                 >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.saveButton}
-                  onPress={handleAddParty}
-                >
-                  <Text style={styles.saveButtonText}>Add Party</Text>
+                  <Ionicons name="close" size={24} color="#6b7280" />
                 </TouchableOpacity>
               </View>
-            </View>
+
+              <ScrollView
+                style={styles.scrollContainer}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.formContainer}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Party Name *</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={partyName}
+                      onChangeText={setPartyName}
+                      placeholder="Enter party name"
+                      placeholderTextColor="#9ca3af"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Phone Number</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={phoneNumber}
+                      onChangeText={setPhoneNumber}
+                      placeholder="Enter phone number"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+
+                  {/* <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Address</Text>
+                    <TextInput
+                      style={[styles.textInput, styles.textArea]}
+                      value={address}
+                      onChangeText={setAddress}
+                      placeholder="Enter address"
+                      placeholderTextColor="#9ca3af"
+                      multiline={true}
+                      numberOfLines={3}
+                    />
+                  </View> */}
+
+                  <View style={styles.buttonContainer}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() => setModalVisible(false)}
+                    >
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.saveButton}
+                      onPress={handleAddParty}
+                    >
+                      <Text style={styles.saveButtonText}>Add Party</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </TouchableOpacity>
           </TouchableOpacity>
-        </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -532,7 +547,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111827",
     flex: 1,
-    paddingLeft: 20,
+    paddingLeft: 30,
     textAlign: "center",
   },
   selectModeButton: {
@@ -745,20 +760,25 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
     textAlign: "center",
   },
+  keyboardAvoidingView: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+  },
+  scrollContainer: {
+    maxHeight: 400,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 20,
+    paddingVertical: 20,
+    minHeight: "75%",
   },
   modalContent: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    padding: 0,
-    width: "100%",
     maxWidth: 400,
-    maxHeight: "80%",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -767,6 +787,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+    width: "100%",
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 0,
+    maxHeight: "80%",
   },
   modalHeader: {
     flexDirection: "row",

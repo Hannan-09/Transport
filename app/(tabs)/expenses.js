@@ -5,6 +5,7 @@ import {
   FlatList,
   Modal,
   RefreshControl,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -338,9 +339,34 @@ export default function Expenses() {
         )}
       </View>
 
-      <View style={styles.categoryContainer}>
-        {expenseCategories.map(renderCategoryButton)}
-      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoryScrollContainer}
+      >
+        <View style={styles.categoryContainer}>
+          {expenseCategories.map((category) => (
+            <TouchableOpacity
+              key={category}
+              style={[
+                styles.categoryButton,
+                selectedCategory === category && styles.selectedCategoryButton,
+              ]}
+              onPress={() => setSelectedCategory(category)}
+            >
+              <Text
+                style={[
+                  styles.categoryButtonText,
+                  selectedCategory === category &&
+                    styles.selectedCategoryButtonText,
+                ]}
+              >
+                {category === "Fuel" ? "Fuel Expense" : category}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
 
       <FlatList
         data={expenses}
@@ -563,6 +589,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111827",
     flex: 1,
+    paddingLeft: 30,
     textAlign: "center",
   },
   selectModeButton: {
@@ -598,13 +625,17 @@ const styles = StyleSheet.create({
     color: "#6366f1",
     fontWeight: "500",
   },
+  categoryScrollContainer: {
+    paddingHorizontal: 10,
+  },
   categoryContainer: {
     flexDirection: "row",
-    paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: "white",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
+    height: 65,
+    // height: "fit-content",
   },
   categoryButton: {
     paddingHorizontal: 16,
@@ -762,13 +793,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 60,
+    paddingVertical: 20,
+    marginBottom: 200,
   },
   emptyText: {
     fontSize: 16,
     color: "#6b7280",
     textAlign: "center",
-    marginTop: 16,
+    marginTop: 6,
     marginBottom: 8,
   },
   emptySubtext: {
