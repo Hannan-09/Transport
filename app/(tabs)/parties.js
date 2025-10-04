@@ -22,8 +22,13 @@ const { partiesAPI, transactionsAPI } = supabaseAPI;
 
 export default function Parties() {
   const [parties, setParties] = useState([]);
+  const [filteredParties, setFilteredParties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
 
   // Selection states
   const [selectionMode, setSelectionMode] = useState(false);
@@ -114,6 +119,7 @@ export default function Parties() {
       }
 
       setParties(formattedParties);
+      setFilteredParties(formattedParties);
     } catch (error) {
       console.error("Error loading parties:", error);
       Alert.alert("Error", "Failed to load parties. Please try again.");
@@ -126,6 +132,93 @@ export default function Parties() {
     setRefreshing(true);
     await loadParties();
     setRefreshing(false);
+  };
+
+  const handleSearch = async (query) => {
+    setSearchQuery(query);
+
+    if (query.trim() === "") {
+      setFilteredParties(parties);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+
+    try {
+      // Search in local data first for immediate response
+      const localResults = parties.filter(
+        (party) =>
+          party.name.toLowerCase().includes(query.toLowerCase()) ||
+          (party.phone_number && party.phone_number.includes(query))
+      );
+
+      setFilteredParties(localResults);
+
+      // Optional: Search in Supabase for more comprehensive results
+      const supabaseResults = await partiesAPI.search(query);
+
+      if (supabaseResults && supabaseResults.length > 0) {
+        // Calculate totals for search results
+        const resultsWithTotals = await Promise.all(
+          supabaseResults.map(async (party) => {
+            try {
+              const transactions = await transactionsAPI.getByParty(party.id);
+
+              let totalAmount = 0;
+              let jamaTotal = 0;
+              let udharTotal = 0;
+
+              transactions.forEach((transaction) => {
+                const transactionAmount = parseFloat(transaction.amount || 0);
+                totalAmount += transactionAmount;
+
+                if (transaction.type === "Jama") {
+                  jamaTotal += Math.abs(transactionAmount);
+                } else {
+                  udharTotal += Math.abs(transactionAmount);
+                }
+              });
+
+              const sortedTransactions = transactions.sort(
+                (a, b) => new Date(b.date) - new Date(a.date)
+              );
+              const lastTrip =
+                sortedTransactions.length > 0
+                  ? sortedTransactions[0].date
+                  : new Date().toISOString().split("T")[0];
+
+              return {
+                ...party,
+                totalJama: jamaTotal,
+                totalUdhar: udharTotal,
+                netAmount: totalAmount,
+                lastTrip: lastTrip,
+                rawAmount: totalAmount,
+                transactionCount: transactions.length,
+              };
+            } catch (error) {
+              return {
+                ...party,
+                totalJama: 0,
+                totalUdhar: 0,
+                netAmount: 0,
+                lastTrip: new Date().toISOString().split("T")[0],
+                rawAmount: 0,
+                transactionCount: 0,
+              };
+            }
+          })
+        );
+
+        setFilteredParties(resultsWithTotals);
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      // Fallback to local search results
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleAddParty = async () => {
@@ -176,10 +269,10 @@ export default function Parties() {
   };
 
   const selectAllParties = () => {
-    if (selectedParties.size === parties.length) {
+    if (selectedParties.size === filteredParties.length) {
       setSelectedParties(new Set());
     } else {
-      setSelectedParties(new Set(parties.map((party) => party.id)));
+      setSelectedParties(new Set(filteredParties.map((party) => party.id)));
     }
   };
 
@@ -355,7 +448,7 @@ export default function Parties() {
                 onPress={selectAllParties}
               >
                 <Text style={styles.selectAllText}>
-                  {selectedParties.size === parties.length
+                  {selectedParties.size === filteredParties.length
                     ? "Deselect All"
                     : "Select All"}
                 </Text>
@@ -379,8 +472,44 @@ export default function Parties() {
         )}
       </View>
 
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputContainer}>
+          <Ionicons
+            name="search"
+            size={20}
+            color="#9ca3af"
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search parties by name or phone..."
+            placeholderTextColor="#9ca3af"
+            value={searchQuery}
+            onChangeText={handleSearch}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              style={styles.clearSearchButton}
+              onPress={() => {
+                setSearchQuery("");
+                setFilteredParties(parties);
+              }}
+            >
+              <Ionicons name="close-circle" size={20} color="#9ca3af" />
+            </TouchableOpacity>
+          )}
+        </View>
+        {isSearching && (
+          <View style={styles.searchingIndicator}>
+            <Text style={styles.searchingText}>Searching...</Text>
+          </View>
+        )}
+      </View>
+
       <FlatList
-        data={parties}
+        data={filteredParties}
         renderItem={renderPartyItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
@@ -394,10 +523,14 @@ export default function Parties() {
             <Text style={styles.emptyText}>
               {loading
                 ? "Loading parties and calculating balances..."
+                : searchQuery
+                ? "No parties found matching your search"
                 : "No parties found"}
             </Text>
             <Text style={styles.emptySubtext}>
-              Tap the + button to add your first party
+              {searchQuery
+                ? "Try a different search term"
+                : "Tap the + button to add your first party"}
             </Text>
           </View>
         }
@@ -582,6 +715,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6366f1",
     fontWeight: "500",
+  },
+  searchContainer: {
+    backgroundColor: "white",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  searchInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#111827",
+  },
+  clearSearchButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  searchingIndicator: {
+    alignItems: "center",
+    paddingTop: 8,
+  },
+  searchingText: {
+    fontSize: 12,
+    color: "#6366f1",
+    fontStyle: "italic",
   },
   listContainer: {
     padding: 16,
