@@ -46,7 +46,8 @@ export default function Expenses() {
   const loadExpenses = async () => {
     try {
       setLoading(true);
-      const data = await expensesAPI.getByCategory(selectedCategory);
+      // Get current active month expenses by category (excludes closed months)
+      const data = await expensesAPI.getCurrentByCategory(selectedCategory);
 
       // Format the data to match the UI expectations
       const formattedExpenses = data.map((expense) => ({

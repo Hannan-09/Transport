@@ -56,8 +56,10 @@ export default function Parties() {
 
       for (const party of data) {
         try {
-          // Get all transactions for this party
-          const transactions = await transactionsAPI.getByParty(party.id);
+          // Get current active month transactions for this party (excludes closed months)
+          const transactions = await transactionsAPI.getCurrentByParty(
+            party.id
+          );
 
           // Calculate separate totals for Jama and Udhar
           let totalAmount = 0;
@@ -163,7 +165,10 @@ export default function Parties() {
         const resultsWithTotals = await Promise.all(
           supabaseResults.map(async (party) => {
             try {
-              const transactions = await transactionsAPI.getByParty(party.id);
+              // Get current active month transactions (excludes closed months)
+              const transactions = await transactionsAPI.getCurrentByParty(
+                party.id
+              );
 
               let totalAmount = 0;
               let jamaTotal = 0;

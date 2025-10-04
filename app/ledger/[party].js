@@ -85,8 +85,10 @@ export default function PartyLedger() {
 
       setPartyData(currentParty);
 
-      // Load transactions for this party
-      const transactionData = await transactionsAPI.getByParty(currentParty.id);
+      // Load current active month transactions for this party (excludes closed months)
+      const transactionData = await transactionsAPI.getCurrentByParty(
+        currentParty.id
+      );
 
       // Debug: Check if description field is being fetched
       console.log("Transaction data sample:", transactionData[0]);

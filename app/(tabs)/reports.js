@@ -14,7 +14,12 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { expensesAPI, partiesAPI, transactionsAPI } from "../../lib/supabase";
+import {
+  expensesAPI,
+  monthlyClosuresAPI,
+  partiesAPI,
+  transactionsAPI,
+} from "../../lib/supabase";
 
 export default function Reports() {
   const [parties, setParties] = useState([]);
@@ -30,9 +35,25 @@ export default function Reports() {
     new Date().toISOString().slice(0, 7)
   ); // YYYY-MM format
 
+  // Close Month States
+  const [closeMonthVisible, setCloseMonthVisible] = useState(false);
+  const [currentActiveMonth, setCurrentActiveMonth] = useState(null);
+  const [monthlyClosures, setMonthlyClosures] = useState([]);
+  const [monthSelectorVisible, setMonthSelectorVisible] = useState(false);
+  const [availableMonths, setAvailableMonths] = useState([]);
+
   useEffect(() => {
     loadParties();
+    loadMonthlyClosures();
+    loadCurrentActiveMonth();
   }, []);
+
+  // Update selectedMonth when currentActiveMonth changes
+  useEffect(() => {
+    if (currentActiveMonth) {
+      setSelectedMonth(currentActiveMonth);
+    }
+  }, [currentActiveMonth]);
 
   const loadParties = async () => {
     try {
@@ -41,6 +62,187 @@ export default function Reports() {
     } catch (error) {
       console.error("Error loading parties:", error);
       Alert.alert("Error", "Failed to load parties");
+    }
+  };
+
+  const loadMonthlyClosures = async () => {
+    try {
+      const closures = await monthlyClosuresAPI.getAll();
+      setMonthlyClosures(closures);
+
+      // Generate available months for selection (6 months back + current + 6 months forward)
+      const months = [];
+      const currentDate = new Date();
+      const currentYear = currentDate.getFullYear();
+      const currentMonth = currentDate.getMonth();
+
+      for (let i = -6; i <= 6; i++) {
+        // Calculate year and month properly to avoid timezone issues
+        let targetYear = currentYear;
+        let targetMonth = currentMonth + i;
+
+        // Handle year overflow/underflow
+        while (targetMonth < 0) {
+          targetMonth += 12;
+          targetYear -= 1;
+        }
+        while (targetMonth > 11) {
+          targetMonth -= 12;
+          targetYear += 1;
+        }
+
+        // Create month string in YYYY-MM format (avoid timezone issues)
+        const monthStr = `${targetYear}-${String(targetMonth + 1).padStart(
+          2,
+          "0"
+        )}`;
+
+        // Create date for display label
+        const displayDate = new Date(targetYear, targetMonth, 1);
+
+        months.push({
+          value: monthStr,
+          label: displayDate.toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+          }),
+          isClosed: closures.some((c) => c.month === monthStr),
+        });
+
+        // Debug logging to verify month generation
+        console.log(
+          `Generated month: ${monthStr}, Label: ${displayDate.toLocaleDateString(
+            "en-US",
+            { year: "numeric", month: "long" }
+          )}, Closed: ${closures.some((c) => c.month === monthStr)}`
+        );
+      }
+
+      setAvailableMonths(months);
+    } catch (error) {
+      console.error("Error loading monthly closures:", error);
+    }
+  };
+
+  const loadCurrentActiveMonth = async () => {
+    try {
+      const activeMonth = await monthlyClosuresAPI.getCurrentActiveMonth();
+      setCurrentActiveMonth(activeMonth);
+    } catch (error) {
+      console.error("Error loading current active month:", error);
+    }
+  };
+
+  const handleCloseMonth = async () => {
+    if (!currentActiveMonth) {
+      Alert.alert("Error", "No active month found");
+      return;
+    }
+
+    Alert.alert(
+      "Close Month",
+      `Are you sure you want to close ${new Date(
+        currentActiveMonth + "-01"
+      ).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+      })}?\n\nThis will:\n• Lock all transactions and expenses for this month\n• Start fresh calculations for next month\n• Generate monthly summary\n\nThis action cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Close Month",
+          style: "destructive",
+          onPress: performMonthClosure,
+        },
+      ]
+    );
+  };
+
+  const performMonthClosure = async () => {
+    try {
+      setLoading(true);
+
+      // Check if this month is already closed
+      const existingClosure = await monthlyClosuresAPI.getByMonth(
+        currentActiveMonth
+      );
+      if (existingClosure) {
+        Alert.alert(
+          "Month Already Closed",
+          `${new Date(currentActiveMonth + "-01").toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+          })} has already been closed on ${new Date(
+            existingClosure.closed_at
+          ).toLocaleDateString()}.`
+        );
+        setLoading(false);
+        setCloseMonthVisible(false);
+        return;
+      }
+
+      // Get all data for the current month
+      const allParties = await partiesAPI.getAll();
+      const monthTransactions = await transactionsAPI.getByMonth(
+        currentActiveMonth
+      );
+      const monthExpenses = await expensesAPI.getByMonth(currentActiveMonth);
+
+      // Calculate totals
+      const totalJama = monthTransactions
+        .filter((t) => t.type === "Jama")
+        .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+
+      const totalUdhar = monthTransactions
+        .filter((t) => t.type === "Udhar")
+        .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+
+      const totalExpenses = monthExpenses.reduce(
+        (sum, e) => sum + Math.abs(parseFloat(e.amount)),
+        0
+      );
+
+      // Count unique parties that had transactions
+      const partiesWithTransactions = new Set(
+        monthTransactions.map((t) => t.party_id)
+      );
+
+      // Create monthly closure record
+      const closureData = {
+        month: currentActiveMonth,
+        total_jama: totalJama,
+        total_udhar: totalUdhar,
+        total_expenses: totalExpenses,
+        net_balance: totalJama - totalUdhar - totalExpenses,
+        transactions_count: monthTransactions.length,
+        expenses_count: monthExpenses.length,
+        parties_count: partiesWithTransactions.size,
+      };
+
+      await monthlyClosuresAPI.create(closureData);
+
+      // Reload data
+      await loadMonthlyClosures();
+      await loadCurrentActiveMonth();
+
+      Alert.alert(
+        "Success",
+        `Month ${new Date(currentActiveMonth + "-01").toLocaleDateString(
+          "en-US",
+          { year: "numeric", month: "long" }
+        )} has been closed successfully!\n\nSummary:\n• Total Jama: ₹${totalJama.toFixed(
+          2
+        )}\n• Total Udhar: ₹${totalUdhar.toFixed(
+          2
+        )}\n• Total Expenses: ₹${totalExpenses.toFixed(2)}`
+      );
+
+      setCloseMonthVisible(false);
+    } catch (error) {
+      console.error("Error closing month:", error);
+      Alert.alert("Error", "Failed to close month. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -203,8 +405,8 @@ export default function Reports() {
       );
 
       for (const party of selectedPartiesArray) {
-        // Get transactions for this party
-        const transactions = await transactionsAPI.getByParty(party.id);
+        // Get current active month transactions for this party (excludes closed months)
+        const transactions = await transactionsAPI.getCurrentByParty(party.id);
 
         // Generate report data with HTML content (include WhatsApp message in PDF)
         const reportData = generatePartyReport(party, transactions, {
@@ -275,28 +477,20 @@ export default function Reports() {
       const allParties = await partiesAPI.getAll();
 
       // Get all transactions for the selected month
-      let allTransactions = [];
-      for (const party of allParties) {
-        const partyTransactions = await transactionsAPI.getByParty(party.id);
-        const monthTransactions = partyTransactions.filter((transaction) =>
-          transaction.date.startsWith(selectedMonth)
-        );
+      const monthTransactions = await transactionsAPI.getByMonth(selectedMonth);
 
-        // Add party info to each transaction
-        const transactionsWithParty = monthTransactions.map((transaction) => ({
+      // Add party info to each transaction
+      const allTransactions = monthTransactions.map((transaction) => {
+        const party = allParties.find((p) => p.id === transaction.party_id);
+        return {
           ...transaction,
-          partyName: party.name,
-          partyPhone: party.phone_number,
-        }));
-
-        allTransactions = [...allTransactions, ...transactionsWithParty];
-      }
+          partyName: party?.name || "Unknown Party",
+          partyPhone: party?.phone_number || "",
+        };
+      });
 
       // Get all expenses for the selected month
-      const allExpenses = await expensesAPI.getAll();
-      const monthExpenses = allExpenses.filter((expense) =>
-        expense.date.startsWith(selectedMonth)
-      );
+      const monthExpenses = await expensesAPI.getByMonth(selectedMonth);
 
       // Calculate totals
       const totalJama = allTransactions
@@ -592,8 +786,27 @@ export default function Reports() {
         </TouchableOpacity>
 
         <View style={styles.bottomSection}>
-          <TouchableOpacity style={styles.closeMonth}>
+          <TouchableOpacity
+            style={styles.closeMonth}
+            onPress={() => setCloseMonthVisible(true)}
+          >
+            <Ionicons name="lock-closed-outline" size={20} color="white" />
             <Text style={styles.closeButtonText}>Close Month</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.monthSelector}
+            onPress={() => setMonthSelectorVisible(true)}
+          >
+            <Ionicons name="calendar-outline" size={20} color="#6366f1" />
+            <Text style={styles.monthSelectorText}>
+              {currentActiveMonth
+                ? new Date(currentActiveMonth + "-01").toLocaleDateString(
+                    "en-US",
+                    { year: "numeric", month: "long" }
+                  )
+                : "Select Month"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -905,6 +1118,166 @@ export default function Reports() {
           </View>
         </View>
       </Modal>
+
+      {/* Close Month Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={closeMonthVisible}
+        onRequestClose={() => setCloseMonthVisible(false)}
+        presentationStyle="overFullScreen"
+        statusBarTranslucent={true}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Close Current Month</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setCloseMonthVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#ffffff" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.closeMonthContent}>
+              <View style={styles.currentMonthInfo}>
+                <Text style={styles.currentMonthTitle}>
+                  Current Active Month:{" "}
+                  {currentActiveMonth
+                    ? new Date(currentActiveMonth + "-01").toLocaleDateString(
+                        "en-US",
+                        { year: "numeric", month: "long" }
+                      )
+                    : "Loading..."}
+                </Text>
+
+                <View style={styles.warningBox}>
+                  <Ionicons name="warning-outline" size={24} color="#f59e0b" />
+                  <Text style={styles.warningText}>
+                    Closing this month will lock all transactions and expenses.
+                    This action cannot be undone.
+                  </Text>
+                </View>
+
+                <View style={styles.closureEffects}>
+                  <Text style={styles.effectsTitle}>
+                    What happens when you close the month:
+                  </Text>
+                  <Text style={styles.effectItem}>
+                    • All current transactions become read-only
+                  </Text>
+                  <Text style={styles.effectItem}>
+                    • All current expenses become read-only
+                  </Text>
+                  <Text style={styles.effectItem}>
+                    • Monthly summary is generated and saved
+                  </Text>
+                  <Text style={styles.effectItem}>
+                    • New transactions start fresh for next month
+                  </Text>
+                  <Text style={styles.effectItem}>
+                    • Historical data remains accessible for reports
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setCloseMonthVisible(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.closeMonthButton,
+                  loading && styles.disabledButton,
+                ]}
+                onPress={handleCloseMonth}
+                disabled={loading}
+              >
+                <Ionicons name="lock-closed" size={20} color="white" />
+                <Text style={styles.closeMonthButtonText}>
+                  {loading ? "Closing..." : "Close Month"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Month Selector Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={monthSelectorVisible}
+        onRequestClose={() => setMonthSelectorVisible(false)}
+        presentationStyle="overFullScreen"
+        statusBarTranslucent={true}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Month for Report</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setMonthSelectorVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#ffffff" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.monthsList}>
+              {availableMonths.map((month) => (
+                <TouchableOpacity
+                  key={month.value}
+                  style={[
+                    styles.monthItem,
+                    selectedMonth === month.value && styles.selectedMonthItem,
+                    month.isClosed && styles.closedMonthItem,
+                  ]}
+                  onPress={() => {
+                    setSelectedMonth(month.value);
+                    setMonthSelectorVisible(false);
+                  }}
+                >
+                  <View style={styles.monthInfo}>
+                    <Text
+                      style={[
+                        styles.monthLabel,
+                        selectedMonth === month.value &&
+                          styles.selectedMonthLabel,
+                      ]}
+                    >
+                      {month.label}
+                    </Text>
+                    {month.isClosed && (
+                      <View style={styles.closedBadge}>
+                        <Ionicons
+                          name="lock-closed"
+                          size={12}
+                          color="#dc2626"
+                        />
+                        <Text style={styles.closedBadgeText}>Closed</Text>
+                      </View>
+                    )}
+                  </View>
+                  {selectedMonth === month.value && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={20}
+                      color="#6366f1"
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -983,14 +1356,149 @@ const styles = StyleSheet.create({
   },
   closeMonth: {
     backgroundColor: "#dc2626",
-    padding: 16,
-    borderRadius: 25,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    marginBottom: 12,
   },
   closeButtonText: {
     color: "white",
     fontSize: 16,
     fontWeight: "600",
+    marginLeft: 8,
+  },
+  monthSelector: {
+    backgroundColor: "#f3f4f6",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  monthSelectorText: {
+    color: "#6366f1",
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  closeMonthContent: {
+    maxHeight: 400,
+  },
+  currentMonthInfo: {
+    padding: 20,
+  },
+  currentMonthTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  warningBox: {
+    backgroundColor: "#fef3c7",
+    padding: 16,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: "#f59e0b",
+  },
+  warningText: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 14,
+    color: "#92400e",
+    lineHeight: 20,
+  },
+  closureEffects: {
+    backgroundColor: "#f9fafb",
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  effectsTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  effectItem: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  closeMonthButton: {
+    flex: 1,
+    backgroundColor: "#dc2626",
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+  closeMonthButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  monthsList: {
+    maxHeight: 400,
+  },
+  monthItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  selectedMonthItem: {
+    backgroundColor: "#f0f9ff",
+    borderLeftWidth: 4,
+    borderLeftColor: "#6366f1",
+  },
+  closedMonthItem: {
+    backgroundColor: "#fef2f2",
+  },
+  monthInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  monthLabel: {
+    fontSize: 16,
+    color: "#111827",
+    fontWeight: "500",
+  },
+  selectedMonthLabel: {
+    color: "#6366f1",
+    fontWeight: "600",
+  },
+  closedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fee2e2",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 12,
+  },
+  closedBadgeText: {
+    fontSize: 12,
+    color: "#dc2626",
+    fontWeight: "500",
+    marginLeft: 4,
   },
   // Modal styles
   modalOverlay: {

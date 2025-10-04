@@ -85,13 +85,14 @@ export default function Dashboard() {
     try {
       setLoading(true);
 
-      // Get all transactions to calculate separate Jama and Udhar totals
+      // Get current active month transactions to calculate separate Jama and Udhar totals
       const allParties = await partiesAPI.getAll();
       let totalJama = 0;
       let totalUdhar = 0;
 
       for (const party of allParties) {
-        const transactions = await transactionsAPI.getByParty(party.id);
+        // Get only current active month transactions (excludes closed months)
+        const transactions = await transactionsAPI.getCurrentByParty(party.id);
 
         transactions.forEach((transaction) => {
           const transactionAmount = Math.abs(parseFloat(transaction.amount));
@@ -103,9 +104,9 @@ export default function Dashboard() {
         });
       }
 
-      // Get all expenses to calculate total expenses
-      const allExpenses = await expensesAPI.getAll();
-      const totalExpenses = allExpenses.reduce((sum, expense) => {
+      // Get current active month expenses to calculate total expenses
+      const currentExpenses = await expensesAPI.getCurrentActive();
+      const totalExpenses = currentExpenses.reduce((sum, expense) => {
         return sum + Math.abs(parseFloat(expense.amount));
       }, 0);
 
@@ -479,8 +480,8 @@ export default function Dashboard() {
 
   const handleGeneratePDF = async (party) => {
     try {
-      // Get transactions for this party
-      const transactions = await transactionsAPI.getByParty(party.id);
+      // Get current active month transactions for this party (excludes closed months)
+      const transactions = await transactionsAPI.getCurrentByParty(party.id);
 
       // Generate report data with HTML content (include WhatsApp message in PDF)
       const reportData = generatePartyReport(party, transactions, {
