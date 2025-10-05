@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Transport Ledger",
-    "slug": "transport-ledger",
+    "slug": "Transport",
     "version": "1.0.0",
     "description": "Transport business ledger and expense management application",
     "keywords": ["transport", "ledger", "business", "expenses", "accounting"],
