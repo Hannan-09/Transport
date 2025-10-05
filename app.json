@@ -1,8 +1,10 @@
 {
   "expo": {
-    "name": "Transport",
-    "slug": "Transport",
+    "name": "Transport Ledger",
+    "slug": "transport-ledger",
     "version": "1.0.0",
+    "description": "Transport business ledger and expense management application",
+    "keywords": ["transport", "ledger", "business", "expenses", "accounting"],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "transport",
@@ -13,6 +15,7 @@
     },
     "android": {
       "package": "com.hannan.transport",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -20,11 +23,22 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "Transport Ledger",
+      "shortName": "Transport",
+      "description": "Transport business ledger and expense management app",
+      "themeColor": "#E6F4FE",
+      "backgroundColor": "#ffffff"
     },
     "plugins": [
       "expo-router",
@@ -34,9 +48,10 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#E6F4FE",
           "dark": {
-            "backgroundColor": "#000000"
+            "image": "./assets/images/splash-icon.png",
+            "backgroundColor": "#1a1a1a"
           }
         }
       ]
