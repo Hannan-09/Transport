@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -17,10 +17,23 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as supabaseAPI from "../../lib/supabase";
-const { partiesAPI, transactionsAPI } = supabaseAPI;
+import { useAuth } from "../../contexts/AuthContext_Simple";
+import * as tempFixAPI from "../../lib/supabase_temp_fix";
+const { partiesAPI, transactionsAPI } = tempFixAPI;
+
+// Debug: Log what's available
+console.log("Available exports:", Object.keys(tempFixAPI));
 
 export default function Parties() {
+  const { user } = useAuth();
+
+  // Set the user ID getter for the temp fix
+  React.useEffect(() => {
+    if (user?.id && tempFixAPI.setUserIdGetter) {
+      tempFixAPI.setUserIdGetter(() => user.id);
+    }
+  }, [user]);
+
   const [parties, setParties] = useState([]);
   const [filteredParties, setFilteredParties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +62,7 @@ export default function Parties() {
     try {
       setLoading(true);
 
-      const data = await partiesAPI.getAll();
+      const data = await partiesAPI.getAll(user?.id);
 
       // First load parties with default values
       const formattedParties = [];
@@ -58,7 +71,8 @@ export default function Parties() {
         try {
           // Get current active month transactions for this party (excludes closed months)
           const transactions = await transactionsAPI.getCurrentByParty(
-            party.id
+            party.id,
+            user?.id
           );
 
           // Calculate separate totals for Jama and Udhar
@@ -158,7 +172,7 @@ export default function Parties() {
       setFilteredParties(localResults);
 
       // Optional: Search in Supabase for more comprehensive results
-      const supabaseResults = await partiesAPI.search(query);
+      const supabaseResults = await partiesAPI.search(query, user?.id);
 
       if (supabaseResults && supabaseResults.length > 0) {
         // Calculate totals for search results
@@ -167,7 +181,8 @@ export default function Parties() {
             try {
               // Get current active month transactions (excludes closed months)
               const transactions = await transactionsAPI.getCurrentByParty(
-                party.id
+                party.id,
+                user?.id
               );
 
               let totalAmount = 0;
@@ -239,7 +254,7 @@ export default function Parties() {
         address: address.trim() || null,
       };
 
-      await partiesAPI.create(partyData);
+      await partiesAPI.create(partyData, user?.id);
 
       // Reset form
       setPartyName("");
@@ -292,7 +307,7 @@ export default function Parties() {
           style: "destructive",
           onPress: async () => {
             try {
-              await partiesAPI.delete(partyId);
+              await partiesAPI.delete(partyId, user?.id);
               await loadParties();
               Alert.alert("Success", "Party deleted successfully!");
             } catch (error) {
@@ -323,7 +338,7 @@ export default function Parties() {
             try {
               // Delete all selected parties
               const deletePromises = Array.from(selectedParties).map((id) =>
-                partiesAPI.delete(id)
+                partiesAPI.delete(id, user?.id)
               );
 
               await Promise.all(deletePromises);

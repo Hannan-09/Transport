@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -15,12 +15,22 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { expensesAPI } from "../../lib/supabase";
-// ``;
+import { useAuth } from "../../contexts/AuthContext_Simple";
+import * as tempFixAPI from "../../lib/supabase_temp_fix";
+const { expensesAPI } = tempFixAPI;
 
 const expenseCategories = ["Vehicle Repair", "Fuel", "Other Expenses"];
 
 export default function Expenses() {
+  const { user } = useAuth();
+
+  // Set the user ID getter for the temp fix
+  React.useEffect(() => {
+    if (user?.id && tempFixAPI.setUserIdGetter) {
+      tempFixAPI.setUserIdGetter(() => user.id);
+    }
+  }, [user]);
+
   const [selectedCategory, setSelectedCategory] = useState("Fuel");
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,8 +56,12 @@ export default function Expenses() {
   const loadExpenses = async () => {
     try {
       setLoading(true);
+
       // Get current active month expenses by category (excludes closed months)
-      const data = await expensesAPI.getCurrentByCategory(selectedCategory);
+      const data = await expensesAPI.getCurrentByCategory(
+        selectedCategory,
+        user?.id
+      );
 
       // Format the data to match the UI expectations
       const formattedExpenses = data.map((expense) => ({
@@ -91,7 +105,7 @@ export default function Expenses() {
         description: description.trim() || null,
       };
 
-      await expensesAPI.create(expenseData);
+      await expensesAPI.create(expenseData, user?.id);
 
       // Reset form
       setAmount("");
@@ -145,7 +159,7 @@ export default function Expenses() {
           style: "destructive",
           onPress: async () => {
             try {
-              await expensesAPI.delete(expenseId);
+              await expensesAPI.delete(expenseId, user?.id);
               await loadExpenses();
               Alert.alert("Success", "Expense deleted successfully!");
             } catch (error) {
@@ -179,7 +193,7 @@ export default function Expenses() {
             try {
               // Delete all selected expenses
               const deletePromises = Array.from(selectedExpenses).map((id) =>
-                expensesAPI.delete(id)
+                expensesAPI.delete(id, user?.id)
               );
 
               await Promise.all(deletePromises);

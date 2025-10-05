@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
+import { router } from "expo-router";
 import * as Sharing from "expo-sharing";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -18,7 +19,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { expensesAPI, partiesAPI, transactionsAPI } from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext_Simple";
+import * as tempFixAPI from "../../lib/supabase_temp_fix";
+const { expensesAPI, partiesAPI, transactionsAPI } = tempFixAPI;
 
 // Expense types data
 const expenseTypes = [
@@ -28,6 +31,15 @@ const expenseTypes = [
 ];
 
 export default function Dashboard() {
+  const { logout, user } = useAuth();
+
+  // Set the user ID getter for the temp fix
+  React.useEffect(() => {
+    if (user?.id && tempFixAPI.setUserIdGetter) {
+      tempFixAPI.setUserIdGetter(() => user.id);
+    }
+  }, [user]);
+
   // Dashboard data states
   const [dashboardData, setDashboardData] = useState({
     totalUdhar: 0,
@@ -86,13 +98,16 @@ export default function Dashboard() {
       setLoading(true);
 
       // Get current active month transactions to calculate separate Jama and Udhar totals
-      const allParties = await partiesAPI.getAll();
+      const allParties = await partiesAPI.getAll(user?.id);
       let totalJama = 0;
       let totalUdhar = 0;
 
       for (const party of allParties) {
         // Get only current active month transactions (excludes closed months)
-        const transactions = await transactionsAPI.getCurrentByParty(party.id);
+        const transactions = await transactionsAPI.getCurrentByParty(
+          party.id,
+          user?.id
+        );
 
         transactions.forEach((transaction) => {
           const transactionAmount = Math.abs(parseFloat(transaction.amount));
@@ -105,7 +120,7 @@ export default function Dashboard() {
       }
 
       // Get current active month expenses to calculate total expenses
-      const currentExpenses = await expensesAPI.getCurrentActive();
+      const currentExpenses = await expensesAPI.getCurrentActive(user?.id);
       const totalExpenses = currentExpenses.reduce((sum, expense) => {
         return sum + Math.abs(parseFloat(expense.amount));
       }, 0);
@@ -125,7 +140,7 @@ export default function Dashboard() {
 
   const loadParties = async () => {
     try {
-      const partiesData = await partiesAPI.getAll();
+      const partiesData = await partiesAPI.getAll(user?.id);
       setParties(partiesData);
     } catch (error) {
       console.error("Error loading parties:", error);
@@ -187,7 +202,7 @@ export default function Dashboard() {
           running_balance: 0, // Will be calculated properly in sequence
         };
 
-        return transactionsAPI.create(transactionData);
+        return transactionsAPI.create(transactionData, user?.id);
       });
 
       await Promise.all(createPromises);
@@ -319,7 +334,7 @@ export default function Dashboard() {
         description: description.trim() || null,
       };
 
-      await expensesAPI.create(expenseData);
+      await expensesAPI.create(expenseData, user?.id);
 
       // Reset form and close modal
       setExpenseAmount("");
@@ -481,7 +496,10 @@ export default function Dashboard() {
   const handleGeneratePDF = async (party) => {
     try {
       // Get current active month transactions for this party (excludes closed months)
-      const transactions = await transactionsAPI.getCurrentByParty(party.id);
+      const transactions = await transactionsAPI.getCurrentByParty(
+        party.id,
+        user?.id
+      );
 
       // Generate report data with HTML content (include WhatsApp message in PDF)
       const reportData = generatePartyReport(party, transactions, {
@@ -556,6 +574,30 @@ export default function Dashboard() {
 
       <View style={[styles.header]}>
         <Text style={styles.headerTitle}>Transport Ledger</Text>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={() => {
+            Alert.alert("Logout", "Are you sure you want to logout?", [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Logout",
+                style: "destructive",
+                onPress: async () => {
+                  try {
+                    await logout();
+                    router.replace("/auth/login");
+                  } catch (error) {
+                    console.log("Logout navigation error:", error);
+                    // The AuthGuard should handle the redirect
+                    await logout();
+                  }
+                },
+              },
+            ]);
+          }}
+        >
+          <Ionicons name="log-out-outline" size={24} color="#6b7280" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -1170,6 +1212,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#f9fafb",
   },
   header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 16,
     backgroundColor: "white",
@@ -1179,8 +1224,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: "600",
-    textAlign: "center",
     color: "#111827",
+    flex: 1,
+    textAlign: "center",
+  },
+  logoutButton: {
+    padding: 8,
   },
   content: {
     flex: 1,

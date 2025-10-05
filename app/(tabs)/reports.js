@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -14,14 +14,21 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  expensesAPI,
-  monthlyClosuresAPI,
-  partiesAPI,
-  transactionsAPI,
-} from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext_Simple";
+import * as tempFixAPI from "../../lib/supabase_temp_fix";
+const { expensesAPI, monthlyClosuresAPI, partiesAPI, transactionsAPI } =
+  tempFixAPI;
 
 export default function Reports() {
+  const { user } = useAuth();
+
+  // Set the user ID getter for the temp fix
+  React.useEffect(() => {
+    if (user?.id && tempFixAPI.setUserIdGetter) {
+      tempFixAPI.setUserIdGetter(() => user.id);
+    }
+  }, [user]);
+
   const [parties, setParties] = useState([]);
   const [selectedParties, setSelectedParties] = useState(new Set());
   const [partyModalVisible, setPartyModalVisible] = useState(false);
@@ -57,7 +64,7 @@ export default function Reports() {
 
   const loadParties = async () => {
     try {
-      const partiesData = await partiesAPI.getAll();
+      const partiesData = await partiesAPI.getAll(user?.id);
       setParties(partiesData);
     } catch (error) {
       console.error("Error loading parties:", error);
@@ -67,7 +74,7 @@ export default function Reports() {
 
   const loadMonthlyClosures = async () => {
     try {
-      const closures = await monthlyClosuresAPI.getAll();
+      const closures = await monthlyClosuresAPI.getAll(user?.id);
       setMonthlyClosures(closures);
 
       // Generate available months for selection (6 months back + current + 6 months forward)
@@ -126,7 +133,9 @@ export default function Reports() {
 
   const loadCurrentActiveMonth = async () => {
     try {
-      const activeMonth = await monthlyClosuresAPI.getCurrentActiveMonth();
+      const activeMonth = await monthlyClosuresAPI.getCurrentActiveMonth(
+        user?.id
+      );
       setCurrentActiveMonth(activeMonth);
     } catch (error) {
       console.error("Error loading current active month:", error);
@@ -164,7 +173,8 @@ export default function Reports() {
 
       // Check if this month is already closed
       const existingClosure = await monthlyClosuresAPI.getByMonth(
-        currentActiveMonth
+        currentActiveMonth,
+        user?.id
       );
       if (existingClosure) {
         Alert.alert(
@@ -182,11 +192,15 @@ export default function Reports() {
       }
 
       // Get all data for the current month
-      const allParties = await partiesAPI.getAll();
+      const allParties = await partiesAPI.getAll(user?.id);
       const monthTransactions = await transactionsAPI.getByMonth(
-        currentActiveMonth
+        currentActiveMonth,
+        user?.id
       );
-      const monthExpenses = await expensesAPI.getByMonth(currentActiveMonth);
+      const monthExpenses = await expensesAPI.getByMonth(
+        currentActiveMonth,
+        user?.id
+      );
 
       // Calculate totals
       const totalJama = monthTransactions
@@ -217,6 +231,7 @@ export default function Reports() {
         transactions_count: monthTransactions.length,
         expenses_count: monthExpenses.length,
         parties_count: partiesWithTransactions.size,
+        user_id: user?.id || "00000000-0000-0000-0000-000000000001", // Add user_id to the closure data
       };
 
       await monthlyClosuresAPI.create(closureData);
@@ -406,7 +421,10 @@ export default function Reports() {
 
       for (const party of selectedPartiesArray) {
         // Get current active month transactions for this party (excludes closed months)
-        const transactions = await transactionsAPI.getCurrentByParty(party.id);
+        const transactions = await transactionsAPI.getCurrentByParty(
+          party.id,
+          user?.id
+        );
 
         // Generate report data with HTML content (include WhatsApp message in PDF)
         const reportData = generatePartyReport(party, transactions, {
@@ -474,10 +492,13 @@ export default function Reports() {
       setLoading(true);
 
       // Get all parties
-      const allParties = await partiesAPI.getAll();
+      const allParties = await partiesAPI.getAll(user?.id);
 
       // Get all transactions for the selected month
-      const monthTransactions = await transactionsAPI.getByMonth(selectedMonth);
+      const monthTransactions = await transactionsAPI.getByMonth(
+        selectedMonth,
+        user?.id
+      );
 
       // Add party info to each transaction
       const allTransactions = monthTransactions.map((transaction) => {
@@ -490,7 +511,10 @@ export default function Reports() {
       });
 
       // Get all expenses for the selected month
-      const monthExpenses = await expensesAPI.getByMonth(selectedMonth);
+      const monthExpenses = await expensesAPI.getByMonth(
+        selectedMonth,
+        user?.id
+      );
 
       // Calculate totals
       const totalJama = allTransactions

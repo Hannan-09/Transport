@@ -17,11 +17,21 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { partiesAPI, transactionsAPI } from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext_Simple";
+import * as tempFixAPI from "../../lib/supabase_temp_fix";
+const { partiesAPI, transactionsAPI } = tempFixAPI;
 
 export default function PartyLedger() {
   const { party } = useLocalSearchParams();
   const partyName = decodeURIComponent(party || "");
+  const { user } = useAuth();
+
+  // Set the user ID getter for the temp fix
+  useEffect(() => {
+    if (user?.id && tempFixAPI.setUserIdGetter) {
+      tempFixAPI.setUserIdGetter(() => user.id);
+    }
+  }, [user]);
 
   const [transactions, setTransactions] = useState([]);
   const [partyData, setPartyData] = useState(null);
@@ -74,7 +84,7 @@ export default function PartyLedger() {
       setLoading(true);
 
       // First, find the party by name
-      const allParties = await partiesAPI.getAll();
+      const allParties = await partiesAPI.getAll(user?.id);
       const currentParty = allParties.find((p) => p.name === partyName);
 
       if (!currentParty) {
@@ -87,7 +97,8 @@ export default function PartyLedger() {
 
       // Load current active month transactions for this party (excludes closed months)
       const transactionData = await transactionsAPI.getCurrentByParty(
-        currentParty.id
+        currentParty.id,
+        user?.id
       );
 
       // Debug: Check if description field is being fetched
@@ -184,7 +195,7 @@ export default function PartyLedger() {
           running_balance: 0, // Will be calculated properly in sequence
         };
 
-        return transactionsAPI.create(transactionData);
+        return transactionsAPI.create(transactionData, user?.id);
       });
 
       await Promise.all(createPromises);
@@ -319,7 +330,7 @@ export default function PartyLedger() {
           style: "destructive",
           onPress: async () => {
             try {
-              await transactionsAPI.delete(transactionId);
+              await transactionsAPI.delete(transactionId, user?.id);
               await loadPartyData();
               Alert.alert("Success", "Transaction deleted successfully!");
             } catch (error) {
@@ -353,7 +364,7 @@ export default function PartyLedger() {
             try {
               // Delete all selected transactions
               const deletePromises = Array.from(selectedTransactions).map(
-                (id) => transactionsAPI.delete(id)
+                (id) => transactionsAPI.delete(id, user?.id)
               );
 
               await Promise.all(deletePromises);
